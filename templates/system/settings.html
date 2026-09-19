@@ -88,6 +88,8 @@
     <div class="card app-card h-100">
       <div class="card-header">ℹ️ 系统信息</div>
       <div class="card-body small">
+        <div class="mb-1"><span class="text-secondary">系统版本：</span><b>v{{ version }}</b>（更新日志见项目里的 CHANGELOG.md）</div>
+        {% if edition %}<div class="mb-1"><span class="text-secondary">版本标识：</span>{{ edition }}</div>{% endif %}
         <div class="mb-1"><span class="text-secondary">系统名称：</span>物业管家（个人版）</div>
         <div class="mb-1"><span class="text-secondary">数据文件：</span><code>{{ db_path }}</code></div>
         <div class="mb-1"><span class="text-secondary">备份目录：</span><code>data/backups/</code></div>

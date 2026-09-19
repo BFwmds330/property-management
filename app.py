@@ -15,7 +15,8 @@ import webbrowser
 from flask import Flask, g, redirect, render_template, request, session, url_for
 
 import database
-from config import BASE_DIR, DATA_DIR, DEFAULT_PORT, EDITION, MAX_CONTENT_LENGTH, ensure_dirs
+from config import (BASE_DIR, DATA_DIR, DEFAULT_PORT, EDITION, MAX_CONTENT_LENGTH,
+                    VERSION, ensure_dirs)
 from utils import (BILL_STATUS, BILL_STATUS_COLOR, CYCLE_NAME, HOUSE_STATUS,
                    HOUSE_STATUS_COLOR, PAY_METHODS, PRICING_NAME, RELATIONS,
                    REPAIR_STATUS, REPAIR_STATUS_COLOR, ROLE, fmt_area, fmt_money,
@@ -127,7 +128,7 @@ def create_app():
 
         return dict(
             v=v, sel=sel, chk=chk,
-            edition=EDITION,
+            edition=EDITION, version=VERSION,
             HOUSE_STATUS=HOUSE_STATUS, HOUSE_STATUS_COLOR=HOUSE_STATUS_COLOR,
             BILL_STATUS=BILL_STATUS, BILL_STATUS_COLOR=BILL_STATUS_COLOR,
             ROLE=ROLE, RELATIONS=RELATIONS, PAY_METHODS=PAY_METHODS,
@@ -205,7 +206,7 @@ def main():
 
     edition_tag = "（%s）" % EDITION if EDITION else ""
     print("=" * 56)
-    print("  物业管家（个人版）%s 已启动" % edition_tag)
+    print("  物业管家（个人版）v%s%s 已启动" % (VERSION, edition_tag))
     print("  本机访问：%s" % url)
     print("  手机访问（需同一 WiFi）：http://%s:%d" % (_lan_ip(), port))
     print("  数据保存在：data 文件夹里，关闭本窗口即退出系统")

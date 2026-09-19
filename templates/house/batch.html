@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}批量生成房屋 - 物业管家{% endblock %}
 {% block content %}
+<div class="page-head">
+  <h5>⚡ 批量生成整栋房屋</h5>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-success" href="{{ url_for('building.building_list') }}">🏗 新增 / 管理楼栋</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('house.house_list') }}">返回房屋列表</a>
+  </div>
+</div>
 <div class="row justify-content-center">
   <div class="col-lg-8">
     <div class="alert alert-info small">
@@ -20,7 +27,7 @@
                 <option value="{{ b.id }}" {{ sel('building_id', b.id) }}>{{ b.code }}（{{ b.units }} 单元 / {{ b.floors }} 层）</option>
                 {% endfor %}
               </select>
-              {% if not buildings %}<div class="form-text-hint">还没有楼栋，请先到「房屋 → 楼栋」添加</div>{% endif %}
+              {% if not buildings %}<div class="form-text-hint">还没有楼栋：<a href="{{ url_for('building.building_list') }}">点这里去新增楼栋</a>，建好后回来刷新本页</div>{% endif %}
             </div>
             <div class="col-md-2">
               <label class="form-label">单元数 <span class="req">＊</span></label>
@@ -62,7 +69,7 @@
       <div class="card-header">💡 提示</div>
       <div class="card-body small text-secondary">
         <ol class="mb-0">
-          <li>先到「房屋 → 楼栋」把楼栋建好（编号、单元数、层数、有无电梯）。</li>
+          <li>先到「<a href="{{ url_for('building.building_list') }}">楼栋管理</a>」把楼栋建好（编号、单元数、层数、有无电梯）。</li>
           <li>回到这里一键生成整栋房屋。</li>
           <li>生成后到房屋列表逐套绑定户型、面积、业主即可。</li>
         </ol>

@@ -14,18 +14,22 @@
   <div class="container-fluid app-container">
     <a class="navbar-brand fw-bold" href="{{ url_for('main.dashboard') }}">🏠 物业管家{% if edition %} <span class="badge rounded-pill text-bg-light">{{ edition }}</span>{% endif %}</a>
 
-    <!-- 顶部小区切换器 -->
+    <!-- 顶部小区切换器 + 新增/管理小区入口 -->
     {% if communities %}
-    <form method="post" action="{{ url_for('community.community_switch', cid=0) }}" id="community-switch-form"
-          class="community-switch" data-next="{{ request.full_path if request.full_path else '/' }}">
-      <input type="hidden" name="next" value="{{ request.full_path if request.full_path else '/' }}">
-      <label class="text-white-50 d-none d-md-inline">当前小区：</label>
-      <select class="form-select form-select-sm community-select" name="dummy" id="community-select" style="width:auto">
-        {% for c in communities %}
-        <option value="{{ c.id }}" {% if cur and cur.id == c.id %}selected{% endif %}>{{ c.name }}</option>
-        {% endfor %}
-      </select>
-    </form>
+    <div class="d-flex align-items-center gap-1 community-switch">
+      <form method="post" action="{{ url_for('community.community_switch', cid=0) }}" id="community-switch-form"
+            data-next="{{ request.full_path if request.full_path else '/' }}">
+        <input type="hidden" name="next" value="{{ request.full_path if request.full_path else '/' }}">
+        <label class="text-white-50 d-none d-md-inline">当前小区：</label>
+        <select class="form-select form-select-sm community-select" name="dummy" id="community-select" style="width:auto">
+          {% for c in communities %}
+          <option value="{{ c.id }}" {% if cur and cur.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <a class="btn btn-sm btn-outline-light" href="{{ url_for('community.community_list') }}"
+         title="新增小区 / 管理全部小区">＋ 小区</a>
+    </div>
     {% endif %}
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
@@ -67,7 +71,7 @@
 </div>
 
 <footer class="text-center text-secondary small my-4">
-  物业管家（个人版）· 数据保存在本机 data 文件夹 · 记得经常备份
+  物业管家（个人版）v{{ version }}{% if edition %} · {{ edition }}{% endif %} · 数据保存在本机 data 文件夹 · 记得经常备份
 </footer>
 
 <!-- 通用二次确认弹窗 -->

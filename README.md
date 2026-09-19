@@ -161,7 +161,8 @@
 - 技术栈：Python 3.10+ / Flask / SQLite（标准库 sqlite3），前端为本地化的 Bootstrap 5 + 原生 JS，无 npm 构建
 - 金额以“分”为整数存储（杜绝浮点误差），面积以 0.01㎡ 整数存储
 - 表结构、页面清单、防呆设计见 [docs/设计说明.md](docs/设计说明.md)
-- 自动化冒烟测试：`python tests/smoke_test.py`（77 项检查，覆盖任务书全部验收标准）
+- 版本更新记录见 [CHANGELOG.md](CHANGELOG.md)
+- 自动化冒烟测试：`python tests/smoke_test.py`（79 项检查，覆盖任务书全部验收标准）
 - 目录结构：
 
 ```

@@ -52,3 +52,6 @@ def load_edition():
 
 # 版本标识（空 = 标准版）
 EDITION = load_edition()
+
+# 系统版本号：每次发布更新，更新日志见 CHANGELOG.md
+VERSION = "1.2.1"
