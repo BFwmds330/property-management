@@ -211,6 +211,7 @@ def distinct_periods(db, community_id):
 def get_bill_full(db, bill_id):
     row = query_one(db, """
         SELECT b.*, f.name AS item_name, f.cycle AS item_cycle, f.pricing_mode,
+               v.plate AS vehicle_plate,
                h.unit, h.room_no, h.area_100, h.status AS house_status, h.community_id,
                bd.code AS building_code, r.name AS owner_name, r.phone AS owner_phone
         FROM bill b
@@ -218,6 +219,7 @@ def get_bill_full(db, bill_id):
         JOIN house h ON h.id = b.house_id
         JOIN building bd ON bd.id = h.building_id
         LEFT JOIN resident r ON r.id = h.owner_resident_id
+        LEFT JOIN vehicle v ON v.id = b.vehicle_id
         WHERE b.id = ?""", (bill_id,))
     if not row:
         raise UserError("没有找到这笔账单，可能已被删除，请刷新页面")

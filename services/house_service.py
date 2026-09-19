@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """楼栋 / 户型 / 房屋管理，含批量生成与产权过户。"""
 from database import log_op, query_all, query_one, scalar
-from utils import (UserError, clean_str, fmt_area, parse_area, parse_date,
-                   parse_int, HOUSE_STATUS)
+from utils import (UserError, clean_str, fmt_area, month_add, parse_area,
+                   parse_date, parse_int, HOUSE_STATUS)
 
 # ---------------------------------------------------------------- 楼栋
 
@@ -192,8 +192,23 @@ def get_house_full(db, hid):
     if not row:
         raise UserError("没有找到这套房屋，可能已被删除，请刷新页面")
     d = dict(row)
-    d["vehicles"] = [dict(v) for v in query_all(
-        db, "SELECT * FROM vehicle WHERE house_id=? ORDER BY id", (hid,))]
+    d["vehicles"] = []
+    for v in query_all(db, "SELECT * FROM vehicle WHERE house_id=? ORDER BY id", (hid,)):
+        v = dict(v)
+        bills = [dict(b) for b in query_all(db, """
+            SELECT b.*, f.name AS item_name FROM bill b
+            JOIN fee_item f ON f.id = b.fee_item_id
+            WHERE b.vehicle_id = ? AND b.status != 'void'
+            ORDER BY b.period_start, b.id""", (v["id"],))]
+        paid_until = ""
+        for b in bills:
+            if b["status"] == "paid":
+                end = month_add(b["period_start"], max(b["months"], 1) - 1)
+                if end > paid_until:
+                    paid_until = end
+        v["bills"] = bills
+        v["paid_until"] = paid_until
+        d["vehicles"].append(v)
     return d
 
 

@@ -116,10 +116,21 @@ CREATE TABLE IF NOT EXISTS fee_item (
     UNIQUE(community_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS vehicle (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    house_id   INTEGER NOT NULL REFERENCES house(id) ON DELETE CASCADE,
+    plate      TEXT NOT NULL,
+    remark     TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_house ON vehicle(house_id);
+
 CREATE TABLE IF NOT EXISTS bill (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     house_id          INTEGER NOT NULL REFERENCES house(id) ON DELETE CASCADE,
     fee_item_id       INTEGER NOT NULL REFERENCES fee_item(id),
+    vehicle_id        INTEGER REFERENCES vehicle(id) ON DELETE SET NULL,
     period            TEXT NOT NULL,
     period_start      TEXT NOT NULL,
     months            INTEGER NOT NULL DEFAULT 1,
@@ -164,16 +175,6 @@ CREATE TABLE IF NOT EXISTS repair (
     created_at    TEXT DEFAULT (datetime('now','localtime')),
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );
-
-CREATE TABLE IF NOT EXISTS vehicle (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    house_id   INTEGER NOT NULL REFERENCES house(id) ON DELETE CASCADE,
-    plate      TEXT NOT NULL,
-    remark     TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_vehicle_house ON vehicle(house_id);
 
 CREATE TABLE IF NOT EXISTS operation_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -229,6 +230,9 @@ def _migrate(db):
     cols = {r[1] for r in db.execute("PRAGMA table_info(house)")}
     if "parking_no" not in cols:
         db.execute("ALTER TABLE house ADD COLUMN parking_no TEXT DEFAULT ''")
+    bcols = {r[1] for r in db.execute("PRAGMA table_info(bill)")}
+    if "vehicle_id" not in bcols:
+        db.execute("ALTER TABLE bill ADD COLUMN vehicle_id INTEGER REFERENCES vehicle(id) ON DELETE SET NULL")
 
 
 def ensure_schema(db):
