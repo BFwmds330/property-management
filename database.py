@@ -165,6 +165,16 @@ CREATE TABLE IF NOT EXISTS repair (
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS vehicle (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    house_id   INTEGER NOT NULL REFERENCES house(id) ON DELETE CASCADE,
+    plate      TEXT NOT NULL,
+    remark     TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vehicle_house ON vehicle(house_id);
+
 CREATE TABLE IF NOT EXISTS operation_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     module     TEXT DEFAULT '',
@@ -214,9 +224,17 @@ def open_db(path=None):
     return db
 
 
+def _migrate(db):
+    """轻量升级：给老数据库补上新增的列（新装环境无感）。"""
+    cols = {r[1] for r in db.execute("PRAGMA table_info(house)")}
+    if "parking_no" not in cols:
+        db.execute("ALTER TABLE house ADD COLUMN parking_no TEXT DEFAULT ''")
+
+
 def ensure_schema(db):
     """建库建表；已存在则跳过。恢复旧备份后也会调用它补齐缺失的表。"""
     db.executescript(SCHEMA)
+    _migrate(db)
     db.commit()
 
 

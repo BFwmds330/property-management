@@ -191,7 +191,10 @@ def get_house_full(db, hid):
         WHERE h.id = ?""", (hid,))
     if not row:
         raise UserError("没有找到这套房屋，可能已被删除，请刷新页面")
-    return dict(row)
+    d = dict(row)
+    d["vehicles"] = [dict(v) for v in query_all(
+        db, "SELECT * FROM vehicle WHERE house_id=? ORDER BY id", (hid,))]
+    return d
 
 
 def _house_unique_fields(db, form, building):
@@ -224,10 +227,11 @@ def add_house(db, community_id, form):
     owner_resident_id = _resolve_owner(db, community_id, form)
     cur = db.execute(
         """INSERT INTO house (community_id, building_id, unit, floor, room_no, area_100,
-               inner_area_100, house_type_id, status, owner_resident_id, occupied_date, remark)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+               inner_area_100, house_type_id, status, owner_resident_id, occupied_date, remark, parking_no)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (community_id, building["id"], unit, floor, room_no, area_100, inner_area_100,
-         type_id, status, owner_resident_id, occupied_date, remark))
+         type_id, status, owner_resident_id, occupied_date, remark,
+         clean_str(form.get("parking_no"), "车位号", 50)))
     if owner_resident_id:
         _link_owner(db, cur.lastrowid, owner_resident_id)
     log_op(db, "房屋", "新增房屋", "新增房屋 %s" % house_label(building, unit, room_no))
@@ -278,8 +282,9 @@ def update_house(db, hid, form):
         raise UserError("房屋已存在：%s，同一楼栋+单元+楼层+房号不能重复" % house_label(building, unit, room_no))
     db.execute(
         """UPDATE house SET unit=?, floor=?, room_no=?, area_100=?, inner_area_100=?,
-               house_type_id=?, status=?, occupied_date=?, remark=? WHERE id=?""",
-        (unit, floor, room_no, area_100, inner_area_100, type_id, status, occupied_date, remark, hid))
+               house_type_id=?, status=?, occupied_date=?, remark=?, parking_no=? WHERE id=?""",
+        (unit, floor, room_no, area_100, inner_area_100, type_id, status, occupied_date, remark,
+         clean_str(form.get("parking_no"), "车位号", 50), hid))
     log_op(db, "房屋", "修改房屋", "修改房屋信息 %s" % house_label(building, unit, room_no))
 
 
@@ -326,6 +331,27 @@ def batch_generate(db, community_id, form):
     log_op(db, "房屋", "批量生成房屋",
            "在楼栋「%s」批量生成 %d 套房屋（跳过已存在 %d 套）" % (building["code"], created, skipped))
     return created, skipped
+
+
+# ---------------------------------------------------------------- 车辆
+
+def add_vehicle(db, hid, form):
+    house = get_house_full(db, hid)
+    plate = clean_str(form.get("plate"), "车牌号", 20, required=True)
+    remark = clean_str(form.get("vehicle_remark"), "车辆备注", 200)
+    if scalar(db, "SELECT COUNT(*) FROM vehicle WHERE house_id=? AND plate=?", (hid, plate)) > 0:
+        raise UserError("这套房已经登记过车牌 %s 了" % plate)
+    db.execute("INSERT INTO vehicle (house_id, plate, remark) VALUES (?,?,?)", (hid, plate, remark))
+    log_op(db, "房屋", "登记车辆", "%s栋%d单元%d室 登记车辆 %s" % (
+        str(house["building_code"]).replace("#", ""), house["unit"], house["room_no"], plate))
+
+
+def delete_vehicle(db, vehicle_id):
+    row = query_one(db, "SELECT * FROM vehicle WHERE id=?", (vehicle_id,))
+    if not row:
+        raise UserError("没有找到这辆车，可能已被删除，请刷新页面")
+    db.execute("DELETE FROM vehicle WHERE id=?", (vehicle_id,))
+    log_op(db, "房屋", "删除车辆", "删除车辆登记 %s（房屋 #%d）" % (row["plate"], row["house_id"]))
 
 
 def transfer_owner(db, hid, form):

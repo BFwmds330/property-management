@@ -438,10 +438,62 @@ def main():
         b.close()
     blocker.close()
 
+    # ============ 16. 名册导入与车辆管理 ============
+    print("\n== 名册导入与车辆管理 ==")
+    import json as _json
+    from services import house_import as _hi
+    id17 = "11010119900307777"
+    good_id = id17 + __import__("sys").modules["utils"].idcard_check_digit(id17)
+    csv_lines = [
+        "栋编号,单元,房号,建筑面积,车位号,业主姓名,业主电话,业主证件号,业主性别,业主工作单位,家庭成员,租户,车辆,备注",
+        "9,1,1,89.50,12东,钱测试,13800009001,,男,测试单位,孙测试|13800009002||配偶,周租户|13800009003,皖A99999|地下9号,导入测试",
+        "9,1,2,75.20,,吴测试,13800009004,{},女,,,".format(good_id),
+        "9,2,1,99.00,,錯测试,x,y,,",   # 坏行：电话/证件号非法 → 应被拦截
+    ]
+    csv_bytes = ("\n".join(csv_lines)).encode("gbk")     # 顺带验证 GBK 编码兼容
+    r = c2.post("/house/import/preview", data={"file": (io.BytesIO(csv_bytes), "名册.csv")},
+                content_type="multipart/form-data")
+    html = r.data.decode("utf-8")
+    check("名册导入预览可打开", r.status_code == 200 and "预览确认" in html)
+    check("坏行被拦截并提示", "必须全部修正" in html and "1 个问题" in html)
+    # 去掉坏行后确认导入
+    rows = _hi.read_import_csv(("\n".join(csv_lines[:-1])).encode("utf-8-sig"))
+    payload = _json.dumps(rows, ensure_ascii=False)
+    r = c2.post("/house/import/confirm", data={"payload": payload}, follow_redirects=True)
+    check("导入成功提示", "导入完成" in r.data.decode("utf-8"))
+    n_house = db_rows("SELECT COUNT(*) AS n FROM house WHERE community_id=1 AND building_id IN "
+                      "(SELECT id FROM building WHERE code='9#')")[0]["n"]
+    check("导入新建 2 套房屋", n_house == 2, str(n_house))
+    r = c2.get("/resident?keyword=钱测试")
+    check("导入的业主可搜索", "钱测试".encode() in r.data)
+    hid_imp = db_rows("SELECT h.id FROM house h JOIN building b ON b.id=h.building_id "
+                      "WHERE b.code='9#' AND h.room_no=1")[0]["id"]
+    r = c2.get("/house/%d" % hid_imp)
+    check("房屋详情显示车位号", "12东".encode() in r.data)
+    check("房屋详情显示车辆", "皖A99999".encode() in r.data)
+    check("家庭成员已导入", "孙测试".encode() in r.data and "配偶".encode() in r.data)
+    check("租户已导入且状态变为出租", "周租户".encode() in r.data)
+    st = db_rows("SELECT status FROM house WHERE id=?", (hid_imp,))[0]["status"]
+    check("有租户的房屋状态=出租", st == "rent", st)
+    # 重复导入：不应重复登记业主/车辆
+    r = c2.post("/house/import/confirm", data={"payload": payload}, follow_redirects=True)
+    n_owner = db_rows("""SELECT COUNT(*) AS n FROM resident_house rh WHERE rh.house_id=? AND rh.role='owner'
+                         AND rh.is_current=1""", (hid_imp,))[0]["n"]
+    n_car = db_rows("SELECT COUNT(*) AS n FROM vehicle WHERE house_id=?", (hid_imp,))[0]["n"]
+    check("重复导入不产生重复业主/车辆", n_owner == 1 and n_car == 1,
+          "业主 %d 车 %d" % (n_owner, n_car))
+    # 车辆登记/删除
+    r = c2.post("/house/%d/vehicle/add" % hid_imp, data={"plate": "皖B88888", "vehicle_remark": "测试"},
+                follow_redirects=True)
+    check("手工登记车辆", "皖B88888".encode() in r.data)
+    vid = db_rows("SELECT id FROM vehicle WHERE plate='皖B88888'")[0]["id"]
+    r = c2.post("/house/vehicle/%d/delete" % vid, follow_redirects=True)
+    check("删除车辆登记", "皖B88888".encode() not in r.data)
+
     # ============ 16. 所有页面可访问 ============
     print("\n== 所有页面可访问 ==")
     pages = ["/", "/community/list", "/community/add", "/house", "/house/add", "/house/batch",
-             "/building", "/house-type", "/resident", "/resident/add?house_id=%d&role=member" % hid_main,
+             "/house/import", "/building", "/house-type", "/resident", "/resident/add?house_id=%d&role=member" % hid_main,
              "/fee/items", "/fee/bills", "/fee/generate", "/fee/overdue", "/fee/payments",
              "/report", "/repair", "/settings", "/house/%d" % hid_main,
              "/house/%d/edit" % hid_main, "/fee/house/%d/payall" % hid_main,

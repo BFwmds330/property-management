@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""房屋 / 楼栋 / 户型管理：列表、筛选、增删改、批量生成、房屋详情、产权过户。"""
+"""房屋 / 楼栋 / 户型管理：列表、筛选、增删改、批量生成、房屋详情、产权过户、名册导入。"""
+import json
+
 from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    session, url_for)
 
 from routes.helpers import cur_community, need_community, safe
-from services import house_service, resident_service
-from utils import safe_int
+from services import house_service, house_import, resident_service
+from utils import csv_response, safe_int
 
 house_bp = Blueprint("house", __name__)
 building_bp = Blueprint("building", __name__)
@@ -170,6 +172,99 @@ def house_transfer_post(db, hid):
     db.commit()
     flash("产权过户完成，旧业主信息已转入历史记录", "success")
     return redirect(url_for("house.house_detail", hid=hid))
+
+
+@house_bp.route("/house/<int:hid>/vehicle/add", methods=["POST"])
+@safe
+def vehicle_add(db, hid):
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    house = house_service.get_house_full(db, hid)
+    if house["community_id"] != cur["id"]:
+        from flask import flash
+        flash("这套房屋不属于当前小区，请先切换小区", "warning")
+        return redirect(url_for("house.house_list"))
+    house_service.add_vehicle(db, hid, request.form)
+    db.commit()
+    from flask import flash
+    flash("车辆登记成功", "success")
+    return redirect(url_for("house.house_detail", hid=hid))
+
+
+@house_bp.route("/house/vehicle/<int:vid>/delete", methods=["POST"])
+@safe
+def vehicle_delete(db, vid):
+    house_service.delete_vehicle(db, vid)
+    db.commit()
+    from flask import flash
+    flash("车辆登记已删除", "success")
+    return redirect(request.referrer or url_for("house.house_list"))
+
+
+# ---------------------------------------------------------------- 名册导入
+
+@house_bp.route("/house/import")
+@safe
+def house_import_form(db):
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    return render_template("house/import.html", active_nav="house")
+
+
+@house_bp.route("/house/import/template")
+def house_import_template():
+    """下载导入模板（内容为虚构示例数据）。"""
+    return csv_response("业主名册导入模板.csv",
+                        house_import.IMPORT_TEMPLATE_ROWS[0],
+                        house_import.IMPORT_TEMPLATE_ROWS[1:])
+
+
+@house_bp.route("/house/import/preview", methods=["POST"])
+@safe
+def house_import_preview(db):
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    f = request.files.get("file")
+    if not f or not f.filename:
+        raise house_import.UserError("请先选择要导入的 CSV 文件")
+    rows = house_import.read_import_csv(f.read())
+    records, errors = house_import.parse_rows(rows)
+    stats = house_import.analyze_import(db, cur["id"], records)
+    return render_template(
+        "house/import.html", records=records, errors=errors, stats=stats,
+        payload=json.dumps(rows, ensure_ascii=False),
+        total_rows=len(records), active_nav="house")
+
+
+@house_bp.route("/house/import/confirm", methods=["POST"])
+@safe
+def house_import_confirm(db):
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    payload = request.form.get("payload", "")
+    import json
+    try:
+        rows = [(int(i), r) for i, r in json.loads(payload)]
+    except (ValueError, TypeError):
+        from flask import flash
+        flash("导入数据已过期，请重新上传文件", "warning")
+        return redirect(url_for("house.house_import_form"))
+    records, errors = house_import.parse_rows(rows)
+    if errors:
+        from flask import flash
+        flash("还有 %d 行数据有问题，无法导入，请修正后重新上传" % len(errors), "danger")
+        return redirect(url_for("house.house_import_form"))
+    created = house_import.execute_import(db, cur["id"], records)
+    db.commit()
+    from flask import flash
+    flash("导入完成：新建房屋 %d 套、更新 %d 套、业主 %d 人、家庭成员 %d 人、租户 %d 人、车辆 %d 辆"
+          % (created["houses_new"], created["houses_updated"], created["owners"],
+             created["members"], created["tenants"], created["vehicles"]), "success")
+    return redirect(url_for("house.house_list"))
 
 
 # ---------------------------------------------------------------- 楼栋

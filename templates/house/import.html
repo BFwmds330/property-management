@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}导入业主名册 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>📥 导入业主名册{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('house.house_list') }}">返回房屋列表</a>
+</div>
+
+{% if stats is defined %}
+<div class="card app-card mb-3">
+  <div class="card-header">第 2 步：预览确认（共读到 {{ total_rows }} 行数据）</div>
+  <div class="card-body">
+    {% if errors %}
+    <div class="alert alert-danger">
+      <b>发现 {{ errors | length }} 个问题，必须全部修正后才能导入：</b>
+      <ul class="mb-0 small">
+        {% for e in errors[:20] %}<li>{{ e }}</li>{% endfor %}
+        {% if errors | length > 20 %}<li>…其余 {{ errors | length - 20 }} 条同理</li>{% endif %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-2"><div class="stat-card"><span class="text-secondary small d-block">将新建楼栋</span><b>{{ stats.buildings_new }} 栋</b></div></div>
+      <div class="col-6 col-md-2"><div class="stat-card"><span class="text-secondary small d-block">新建房屋</span><b class="text-success">{{ stats.houses_new }} 套</b></div></div>
+      <div class="col-6 col-md-2"><div class="stat-card"><span class="text-secondary small d-block">更新已有房屋</span><b>{{ stats.houses_exist }} 套</b></div></div>
+      <div class="col-6 col-md-2"><div class="stat-card"><span class="text-secondary small d-block">业主</span><b>{{ stats.owners }} 人</b></div></div>
+      <div class="col-6 col-md-2"><div class="stat-card"><span class="text-secondary small d-block">家庭成员</span><b>{{ stats.members }} 人</b></div></div>
+      <div class="col-6 col-md-2"><div class="stat-card"><span class="text-secondary small d-block">租户 / 车辆</span><b>{{ stats.tenants }} / {{ stats.vehicles }}</b></div></div>
+    </div>
+    <div class="table-responsive" style="max-height:300px">
+      <table class="table table-sm table-sm-fixed small mb-0">
+        <thead><tr><th>行号</th><th>位置</th><th>业主</th><th>成员/租户</th><th>车辆</th><th>车位号</th></tr></thead>
+        <tbody>
+          {% for r in records[:15] %}
+          <tr>
+            <td>{{ r.lineno }}</td>
+            <td>{{ r.building_code }}栋{{ r.unit }}单元{{ r.room_no }}室</td>
+            <td>{{ r.owner.name }}{% if r.owner.phone %} {{ r.owner.phone }}{% endif %}</td>
+            <td>{{ r.members | length }} / {{ r.tenants | length }}</td>
+            <td>{{ r.vehicles | map(attribute='plate') | join('、') }}</td>
+            <td>{{ r.parking_no or '—' }}</td>
+          </tr>
+          {% endfor %}
+          {% if records | length > 15 %}<tr><td colspan="6" class="text-secondary">…其余 {{ records | length - 15 }} 行同理</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+    <form method="post" action="{{ url_for('house.house_import_confirm') }}" class="mt-3">
+      <input type="hidden" name="payload" value="{{ payload }}">
+      <button class="btn btn-success px-4"
+              data-confirm-title="确认导入"
+              data-confirm="将向当前小区导入：新建房屋 <b>{{ stats.houses_new }}</b> 套、更新 <b>{{ stats.houses_exist }}</b> 套，业主 <b>{{ stats.owners }}</b> 人。<br>已有业主的房屋不会重复登记。确定开始吗？">✅ 确认导入</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('house.house_import_form') }}">重新上传</a>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card app-card">
+  <div class="card-header">第 1 步：下载模板并填写，然后上传</div>
+  <div class="card-body">
+    <ol class="small text-secondary">
+      <li>先 <a href="{{ url_for('house.house_import_template') }}"><b>下载导入模板</b></a>（CSV 文件，可用 Excel 打开编辑）。</li>
+      <li>按模板列填写：栋编号、单元、房号必填；家庭成员/租户/车辆每列可填多组，组内用 <b>|</b> 分隔、组间用 <b>分号</b> 分隔（模板里有示例）。</li>
+      <li>上传后系统会先<b>预览</b>：新建多少房屋、导入多少人都算给你看，确认无误才写入。</li>
+      <li>已存在的房屋只会补空缺信息、不会覆盖你已填的内容；已有业主的房屋不会重复登记业主。</li>
+    </ol>
+    <form method="post" action="{{ url_for('house.house_import_preview') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+      <div class="col-md-6">
+        <input type="file" class="form-control" name="file" accept=".csv" required>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-success w-100">上传并预览</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

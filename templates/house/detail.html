@@ -25,6 +25,7 @@
           <div class="col-6 col-md-4"><span class="text-secondary">业主：</span>
             {% if house.owner_name %}{{ house.owner_name }}{% if house.owner_phone %}（{{ house.owner_phone }}）{% endif %}
             {% else %}<span class="text-secondary">未登记</span>{% endif %}</div>
+          <div class="col-6 col-md-4"><span class="text-secondary">车位号：</span>{{ house.parking_no or '—' }}</div>
           <div class="col-6 col-md-4"><span class="text-secondary">入住日期：</span>{{ house.occupied_date or '—' }}</div>
           <div class="col-12"><span class="text-secondary">欠费：</span>
             {% if house.owed_fen > 0 %}<span class="owed-red">¥{{ house.owed_fen | money }}</span>
@@ -76,6 +77,49 @@
         <a class="btn btn-sm btn-outline-success" href="{{ url_for('resident.resident_add', house_id=house.id, role='owner') }}">＋ 登记业主</a>
         {% endif %}
         <a class="btn btn-sm btn-outline-secondary ms-auto" href="{{ url_for('resident.resident_export') }}">导出通讯录</a>
+      </div>
+    </div>
+
+    <div class="card app-card mb-3">
+      <div class="card-header">🚗 车辆登记（{{ house.vehicles | length }} 辆）</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 table-sm-fixed">
+            <thead><tr><th>车牌号</th><th>备注（车位/租期）</th><th>登记时间</th><th></th></tr></thead>
+            <tbody>
+              {% for car in house.vehicles %}
+              <tr>
+                <td class="fw-bold">{{ car.plate }}</td>
+                <td class="small text-secondary">{{ car.remark or '—' }}</td>
+                <td class="small text-secondary">{{ car.created_at[:10] }}</td>
+                <td>
+                  <form class="d-inline" method="post" action="{{ url_for('house.vehicle_delete', vid=car.id) }}"
+                        data-confirm-title="删除车辆" data-confirm="确定删除车牌 <b>{{ car.plate }}</b> 的登记吗？">
+                    <button class="btn btn-sm btn-outline-danger">删除</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-secondary py-3">还没有登记车辆</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card-footer bg-white">
+        <form class="row g-2 align-items-end" method="post" action="{{ url_for('house.vehicle_add', hid=house.id) }}">
+          <div class="col-5 col-md-3">
+            <label class="form-label small mb-1">车牌号 <span class="req">＊</span></label>
+            <input class="form-control form-control-sm" name="plate" required maxlength="20" placeholder="如：皖D12345">
+          </div>
+          <div class="col-7 col-md-6">
+            <label class="form-label small mb-1">备注（车位号 / 租期）</label>
+            <input class="form-control form-control-sm" name="vehicle_remark" maxlength="200">
+          </div>
+          <div class="col-12 col-md-3">
+            <button class="btn btn-sm btn-outline-success w-100">＋ 登记车辆</button>
+          </div>
+        </form>
       </div>
     </div>
 
