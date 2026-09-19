@@ -33,3 +33,22 @@ def ensure_dirs():
                 # 万一目录建不出来（比如只读盘），把错误直接报给用户看
                 print("【错误】无法创建数据目录：%s" % d, file=sys.stderr)
                 raise
+
+
+def load_edition():
+    """读取版本标识：项目根目录下若有 edition.txt，其内容作为版本名（如“自用版”）。
+
+    标识只影响界面显示。放在独立文件里而不是代码里，是为了以后升级
+    （覆盖代码文件）时不会丢失身份标记。
+    """
+    path = os.path.join(BASE_DIR, "edition.txt")
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            name = f.read().strip()
+        return name[:12]
+    except OSError:
+        return ""
+
+
+# 版本标识（空 = 标准版）
+EDITION = load_edition()

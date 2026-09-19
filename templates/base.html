@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}物业管家（个人版）{% endblock %}</title>
+<title>{% block title %}物业管家{% if edition %}（{{ edition }}）{% endif %}{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🏠</text></svg>">
@@ -12,7 +12,7 @@
 
 <nav class="navbar navbar-expand-lg navbar-dark app-navbar sticky-top">
   <div class="container-fluid app-container">
-    <a class="navbar-brand fw-bold" href="{{ url_for('main.dashboard') }}">🏠 物业管家</a>
+    <a class="navbar-brand fw-bold" href="{{ url_for('main.dashboard') }}">🏠 物业管家{% if edition %} <span class="badge rounded-pill text-bg-light">{{ edition }}</span>{% endif %}</a>
 
     <!-- 顶部小区切换器 -->
     {% if communities %}
