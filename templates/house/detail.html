@@ -85,22 +85,36 @@
       <div class="card-body p-0">
         <div class="table-responsive">
           <table class="table table-hover mb-0 table-sm-fixed">
-            <thead><tr><th>车牌号</th><th>备注（车位/租期）</th><th>登记时间</th><th></th></tr></thead>
+            <thead><tr><th>车牌号</th><th>备注（车位/租期）</th><th>停车费缴纳情况</th><th>登记时间</th><th></th></tr></thead>
             <tbody>
               {% for car in house.vehicles %}
               <tr>
                 <td class="fw-bold">{{ car.plate }}</td>
                 <td class="small text-secondary">{{ car.remark or '—' }}</td>
+                <td>
+                  {% if car.bills %}
+                    {% for pb in car.bills %}
+                    <div class="small">
+                      {{ pb.period }}（{{ pb.amount_receivable | money }} 元）
+                      {% if pb.status == 'paid' %}<span class="text-success">✅</span>
+                      {% else %}<span class="owed-red">未缴</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if car.paid_until %}<span class="badge text-bg-success mt-1">缴至 {{ car.paid_until }}</span>{% endif %}
+                  {% else %}
+                    <span class="text-secondary small">无停车费记录</span>
+                  {% endif %}
+                </td>
                 <td class="small text-secondary">{{ car.created_at[:10] }}</td>
                 <td>
                   <form class="d-inline" method="post" action="{{ url_for('house.vehicle_delete', vid=car.id) }}"
-                        data-confirm-title="删除车辆" data-confirm="确定删除车牌 <b>{{ car.plate }}</b> 的登记吗？">
+                        data-confirm-title="删除车辆" data-confirm="确定删除车牌 <b>{{ car.plate }}</b> 的登记吗？<br>其停车费账单仍会保留在账单列表中。">
                     <button class="btn btn-sm btn-outline-danger">删除</button>
                   </form>
                 </td>
               </tr>
               {% else %}
-              <tr><td colspan="4" class="text-center text-secondary py-3">还没有登记车辆</td></tr>
+              <tr><td colspan="5" class="text-center text-secondary py-3">还没有登记车辆</td></tr>
               {% endfor %}
             </tbody>
           </table>

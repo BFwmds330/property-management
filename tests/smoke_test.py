@@ -490,6 +490,22 @@ def main():
     r = c2.post("/house/vehicle/%d/delete" % vid, follow_redirects=True)
     check("删除车辆登记", "皖B88888".encode() not in r.data)
 
+    # 停车费账单关联车辆（车辆卡片显示缴纳情况）
+    r = c2.post("/fee/items/add", data={"name": "停车费", "pricing_mode": "fixed",
+                                        "unit_price": "20", "cycle": "month"}, follow_redirects=True)
+    fid_park = db_rows("SELECT id FROM fee_item WHERE name='停车费'")[0]["id"]
+    vid = db_rows("SELECT id FROM vehicle WHERE house_id=? AND plate='皖A99999'", (hid_imp,))[0]["id"]
+    con_t = sqlite3.connect(config.DB_PATH)
+    con_t.execute("""INSERT INTO bill (house_id, fee_item_id, vehicle_id, period, period_start,
+        months, amount_receivable, amount_received, status)
+        VALUES (?,?,?,?,?,?,?,?,?)""",
+        (hid_imp, fid_park, vid, "2026.1-2026.12[皖A99999]", "2026-01", 12, 24000, 24000, "paid"))
+    con_t.commit(); con_t.close()
+    r = c2.get("/house/%d" % hid_imp)
+    html2 = r.data.decode("utf-8")
+    check("车辆卡片显示停车费缴纳情况", "2026.1-2026.12" in html2 and "缴至" in html2)
+    check("显示缴至月份", "2026-12" in html2)
+
     # ============ 16. 所有页面可访问 ============
     print("\n== 所有页面可访问 ==")
     pages = ["/", "/community/list", "/community/add", "/house", "/house/add", "/house/batch",

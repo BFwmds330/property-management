@@ -22,6 +22,7 @@
           <div class="col-6 col-md-4"><span class="text-secondary">业主：</span>{{ bill.owner_name or '—' }}</div>
           <div class="col-6 col-md-4"><span class="text-secondary">建筑面积：</span>{{ bill.area_100 | area }} ㎡</div>
           <div class="col-6 col-md-4"><span class="text-secondary">计费方式：</span>{{ PRICING_NAME[bill.pricing_mode] }}</div>
+          {% if bill.vehicle_plate %}<div class="col-6 col-md-4"><span class="text-secondary">关联车牌：</span><b>{{ bill.vehicle_plate }}</b></div>{% endif %}
           <div class="col-6 col-md-4"><span class="text-secondary">应收：</span><b>{{ bill.amount_receivable | money }} 元</b></div>
           <div class="col-6 col-md-4"><span class="text-secondary">已收：</span><b>{{ bill.amount_received | money }} 元</b></div>
           <div class="col-6 col-md-4"><span class="text-secondary">未收：</span>
