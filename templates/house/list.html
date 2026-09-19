@@ -51,6 +51,7 @@
   <div class="card-header d-flex justify-content-between align-items-center">
     <span>共 {{ rows | length }} 套房屋</span>
     <span>
+      <a class="small me-3" href="{{ url_for('house.house_import_form') }}">📥 导入名册</a>
       <a class="small me-3" href="{{ url_for('building.building_list') }}">楼栋管理</a>
       <a class="small" href="{{ url_for('htype.htype_list') }}">户型管理</a>
     </span>
@@ -59,7 +60,7 @@
     <div class="table-responsive">
       <table class="table table-hover table-sm-fixed mb-0 align-middle">
         <thead><tr>
-          <th>房号</th><th>建筑面积(㎡)</th><th>户型</th><th>业主</th><th>状态</th>
+          <th>房号</th><th>建筑面积(㎡)</th><th>车位号</th><th>户型</th><th>业主</th><th>状态</th>
           <th class="text-end">欠费(元)</th><th>操作</th>
         </tr></thead>
         <tbody>
@@ -67,6 +68,7 @@
           <tr>
             <td class="fw-bold">{{ h.building_code | replace('#','') }}-{{ h.unit }}-{{ h.room_no }}</td>
             <td>{{ h.area_100 | area }}</td>
+            <td>{{ h.parking_no or '—' }}</td>
             <td>{{ h.type_name or '—' }}</td>
             <td>{{ h.owner_name or '（未登记）' }}{% if h.owner_phone %}<div class="small text-secondary">{{ h.owner_phone }}</div>{% endif %}</td>
             <td><span class="badge text-bg-{{ HOUSE_STATUS_COLOR[h.status] }}">{{ HOUSE_STATUS[h.status] }}</span></td>
@@ -79,8 +81,8 @@
           </tr>
           {% endfor %}
           {% if not rows %}
-          <tr><td colspan="7" class="text-center text-secondary py-4">
-            没有符合条件的房屋。还没有房屋？点右上角“批量生成”一键生成整栋楼。
+          <tr><td colspan="8" class="text-center text-secondary py-4">
+            没有符合条件的房屋。还没有房屋？点右上角“批量生成”一键生成整栋楼，或用“导入名册”批量导入。
           </td></tr>
           {% endif %}
         </tbody>

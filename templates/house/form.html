@@ -64,6 +64,11 @@
               </select>
             </div>
             <div class="col-md-4">
+              <label class="form-label">车位号</label>
+              <input class="form-control" name="parking_no" maxlength="50"
+                     value="{{ v('parking_no', house.parking_no if house else '') }}" placeholder="如：251东">
+            </div>
+            <div class="col-md-4">
               <label class="form-label">入住日期</label>
               <input class="form-control" type="date" name="occupied_date"
                      value="{{ v('occupied_date', house.occupied_date if house else '') }}">
