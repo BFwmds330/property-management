@@ -412,6 +412,32 @@ def main():
     r = c2.get("/resident?keyword=王五")
     check("重启后住户数据仍在", "王五".encode() in r.data)
 
+    # ============ 15.5 端口占用自动顺延（Windows 兼容）============
+    print("\n== 端口占用自动顺延 ==")
+    import socket as _socket
+    from app import _pick_port
+    blocker = _socket.socket()
+    blocker.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)   # 模拟另一个物业管家实例
+    blocker.bind(("0.0.0.0", 5998))
+    blocker.listen(1)
+    picked = _pick_port(5998)
+    check("端口被占用时自动换下一个", picked is not None and picked != 5998, str(picked))
+    # 把 6019~6039 全部占住，_pick_port 应返回 None
+    blockers = []
+    for p in range(6019, 6040):
+        b = _socket.socket()
+        b.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        try:
+            b.bind(("0.0.0.0", p))
+            b.listen(1)
+            blockers.append(b)
+        except OSError:
+            b.close()      # 已被系统占用也无所谓，效果相同
+    check("全部端口被占时返回 None", _pick_port(6019) is None)
+    for b in blockers:
+        b.close()
+    blocker.close()
+
     # ============ 16. 所有页面可访问 ============
     print("\n== 所有页面可访问 ==")
     pages = ["/", "/community/list", "/community/add", "/house", "/house/add", "/house/batch",

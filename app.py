@@ -39,17 +39,34 @@ def _load_secret_key():
     return key
 
 
-def _free_port(start):
-    """从 start 开始找一个空闲端口。"""
-    port = start
-    for _ in range(20):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("127.0.0.1", port))
-                return port
-            except OSError:
-                port += 1
-    return start
+def _port_in_use(port):
+    """端口是否已有程序在监听：直接连一次，连得上就说明被占用。
+
+    这是最可靠的判断方式——不管对方绑定的是 0.0.0.0 还是具体 IP，
+    只要端口上有服务，连接就一定成功。旧版用“试绑定 127.0.0.1”判断，
+    在 Windows 上会被 0.0.0.0 的监听“骗过”，导致两个版本开在同一个端口。
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _can_bind(port):
+    """能否按服务器将要采用的方式（0.0.0.0）真正绑定该端口。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("0.0.0.0", port))
+            return True
+        except OSError:
+            return False
+
+
+def _pick_port(start):
+    """从 start 开始找一个真正可用的端口（最多往后找 20 个，找不到返回 None）。"""
+    for port in range(start, start + 21):
+        if not _port_in_use(port) and _can_bind(port):
+            return port
+    return None
 
 
 def _lan_ip():
@@ -176,7 +193,14 @@ def main():
         pass
 
     app = create_app()
-    port = _free_port(int(os.environ.get("WUYE_PORT", DEFAULT_PORT)))
+    start = int(os.environ.get("WUYE_PORT", DEFAULT_PORT))
+    port = _pick_port(start)
+    if port is None:
+        print("=" * 56)
+        print("  【提示】%d ~ %d 端口都被占用了。" % (start, start + 20))
+        print("  请把已经打开的物业管家窗口关掉几个，再重新双击启动。")
+        print("=" * 56)
+        return
     url = "http://127.0.0.1:%d" % port
 
     edition_tag = "（%s）" % EDITION if EDITION else ""
@@ -192,7 +216,10 @@ def main():
     if os.environ.get("WUYE_FAST_EXIT") == "1":     # 自动化测试用：启动后自动退出
         threading.Timer(3.0, lambda: os._exit(0)).start()
 
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    try:
+        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    except OSError:
+        print("【提示】端口 %d 刚好被其他程序抢占了，请关掉本窗口后重新双击启动。" % port)
 
 
 if __name__ == "__main__":
