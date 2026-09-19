@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}收费项目 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🧾 收费项目配置{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <a class="btn btn-success" href="{{ url_for('fee.generate_form') }}">生成账单</a>
+</div>
+
+<div class="card app-card mb-3">
+  <div class="card-header">＋ 新增收费项目</div>
+  <div class="card-body">
+    <form class="row g-2 align-items-end" method="post" action="{{ url_for('fee.fee_items_add') }}">
+      <div class="col-6 col-md-2">
+        <label class="form-label small">项目名称 <span class="req">＊</span></label>
+        <input class="form-control form-control-sm" name="name" required maxlength="50" placeholder="如：物业费">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">计价方式</label>
+        <select class="form-select form-select-sm" name="pricing_mode">
+          <option value="area">按建筑面积单价</option>
+          <option value="fixed">按户固定金额</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">单价（元/月）</label>
+        <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="unit_price" required placeholder="2.20">
+        <div class="form-text-hint">按面积=元/㎡/月；按户=元/户/月</div>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">计费周期</label>
+        <select class="form-select form-select-sm" name="cycle">
+          <option value="month">按月</option>
+          <option value="quarter">按季</option>
+          <option value="year">按年</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small">备注</label>
+        <input class="form-control form-control-sm" name="remark" maxlength="200">
+      </div>
+      <div class="col-6 col-md-1">
+        <button class="btn btn-success btn-sm w-100">添加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card app-card">
+  <div class="card-header">共 {{ rows | length }} 个收费项目</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 table-sm-fixed align-middle">
+        <thead><tr><th>名称</th><th>计价方式</th><th>单价</th><th>计费周期</th><th>状态</th><th>已生成账单</th><th>备注</th><th>操作</th></tr></thead>
+        <tbody>
+          {% for f in rows %}
+          <tr>
+            <td class="fw-bold">{{ f.name }}</td>
+            <td>{{ PRICING_NAME[f.pricing_mode] }}</td>
+            <td>{{ f.unit_price | money }} 元{% if f.pricing_mode == 'area' %}/㎡{% else %}/户{% endif %}/月</td>
+            <td>{{ CYCLE_NAME[f.cycle] }}</td>
+            <td>{% if f.enabled %}<span class="badge text-bg-success">启用中</span>{% else %}<span class="badge text-bg-secondary">已停用</span>{% endif %}</td>
+            <td>{{ f.bill_count }} 笔</td>
+            <td class="small text-secondary">{{ f.remark }}</td>
+            <td class="text-nowrap">
+              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editFee{{ f.id }}">编辑</button>
+              <form class="d-inline" method="post" action="{{ url_for('fee.fee_items_toggle', fid=f.id) }}">
+                <input type="hidden" name="enabled" value="{{ 0 if f.enabled else 1 }}">
+                <button class="btn btn-sm btn-outline-warning">{{ '停用' if f.enabled else '启用' }}</button>
+              </form>
+              <form class="d-inline" method="post" action="{{ url_for('fee.fee_items_delete', fid=f.id) }}"
+                    data-confirm-title="删除收费项目"
+                    data-confirm="确定删除「{{ f.name }}」吗？{% if f.bill_count %}<br><b class='text-danger'>它已生成 {{ f.bill_count }} 笔账单，删除会被系统拒绝；建议改用“停用”。</b>{% endif %}">
+                <button class="btn btn-sm btn-outline-danger">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-secondary py-4">还没有收费项目，先在上面添加“物业费”等项目，才能生成账单</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% for f in rows %}
+<div class="modal fade" id="editFee{{ f.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('fee.fee_items_edit', fid=f.id) }}">
+        <div class="modal-header"><h5 class="modal-title">编辑收费项目</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">项目名称</label>
+              <input class="form-control" name="name" value="{{ f.name }}" required maxlength="50"></div>
+            <div class="col-md-6"><label class="form-label">计价方式</label>
+              <select class="form-select" name="pricing_mode">
+                <option value="area" {{ 'selected' if f.pricing_mode == 'area' }}>按建筑面积单价</option>
+                <option value="fixed" {{ 'selected' if f.pricing_mode == 'fixed' }}>按户固定金额</option>
+              </select></div>
+            <div class="col-md-6"><label class="form-label">单价（元/月）</label>
+              <input class="form-control" type="number" step="0.01" min="0.01" name="unit_price" value="{{ f.unit_price / 100 }}" required></div>
+            <div class="col-md-6"><label class="form-label">计费周期</label>
+              <select class="form-select" name="cycle">
+                <option value="month" {{ 'selected' if f.cycle == 'month' }}>按月</option>
+                <option value="quarter" {{ 'selected' if f.cycle == 'quarter' }}>按季</option>
+                <option value="year" {{ 'selected' if f.cycle == 'year' }}>按年</option>
+              </select></div>
+            <div class="col-12"><label class="form-label">备注</label>
+              <input class="form-control" name="remark" value="{{ f.remark }}" maxlength="200"></div>
+          </div>
+          <div class="form-text">修改单价只影响之后新生成的账单，已有账单金额不变。</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-success">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

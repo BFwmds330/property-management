@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}设置 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>⚙️ 设置</h5>
+</div>
+
+<div class="row g-3">
+  <!-- 数据备份 -->
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header">💾 数据备份（重要）</div>
+      <div class="card-body">
+        <p class="small text-secondary">
+          您的住户和缴费记录都是长期积累的重要资产。建议：<b>每周备份一次</b>，
+          把下载的 .db 文件保存到 U 盘或网盘。系统每天首次启动时也会自动备份一份到
+          <code>data/backups/</code>（保留最近 {{ backups | length if backups else 0 }} 份以内）。
+        </p>
+        <a class="btn btn-warning fw-bold" href="{{ url_for('system.backup') }}">⬇ 立即备份数据（下载 .db 文件）</a>
+        {% if backups %}
+        <div class="mt-3">
+          <div class="fw-bold small mb-1">data/backups/ 里已有的备份：</div>
+          <div class="table-responsive" style="max-height:180px">
+            <table class="table table-sm table-sm-fixed mb-0 small">
+              <thead><tr><th>文件</th><th>大小</th><th>时间</th></tr></thead>
+              <tbody>
+                {% for b in backups %}
+                <tr><td>{{ b.name }}</td><td>{{ (b.size / 1024) | round | int }} KB</td><td>{{ b.mtime }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 恢复数据 -->
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header">♻️ 恢复数据</div>
+      <div class="card-body">
+        <p class="small text-secondary">
+          用之前备份的 .db 文件把数据恢复回来（例如换电脑、误删后找回）。
+          <b class="text-danger">恢复会覆盖当前全部数据</b>——放心，恢复前系统会自动先把当前数据备份一份。
+        </p>
+        <form method="post" action="{{ url_for('system.restore') }}" enctype="multipart/form-data"
+              data-confirm-title="恢复数据"
+              data-confirm="确定用备份文件<b>覆盖当前全部数据</b>吗？<br><br>（恢复前会自动备份当前数据，可随时再恢复回来）">
+          <div class="input-group">
+            <input type="file" class="form-control" name="file" accept=".db,.sqlite,.sqlite3" required>
+            <button class="btn btn-danger">恢复数据</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 演示数据 -->
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header">🎭 演示数据</div>
+      <div class="card-body">
+        {% if demo_rows %}
+        <p class="small text-secondary mb-2">当前载入了演示小区：
+          {% for d in demo_rows %}<b>{{ d.name }}</b>{% if not loop.last %}、{% endif %}{% endfor %}。</p>
+        <form method="post" action="{{ url_for('system.demo_clear') }}"
+              data-confirm-title="清空演示数据"
+              data-confirm="将删除演示小区及其全部数据：<b>{{ demo_rows | map(attribute='name') | join('、') }}</b>。<br><br>您自己创建的小区<b>不受影响</b>。<br>如果您曾把真实数据录入演示小区，请先备份！确定清空吗？">
+          <button class="btn btn-outline-danger">一键清空演示数据</button>
+        </form>
+        {% else %}
+        <p class="small text-secondary mb-2">
+          想先练练手？载入一套虚构的演示数据（2 个小区、楼栋房屋、住户、账单和缴费记录），
+          随便点随便改，练习完一键清空，您自己的数据不受影响。
+        </p>
+        <form method="post" action="{{ url_for('system.demo_load') }}">
+          <button class="btn btn-outline-success">一键载入演示数据</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 系统信息 -->
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header">ℹ️ 系统信息</div>
+      <div class="card-body small">
+        <div class="mb-1"><span class="text-secondary">系统名称：</span>物业管家（个人版）</div>
+        <div class="mb-1"><span class="text-secondary">数据文件：</span><code>{{ db_path }}</code></div>
+        <div class="mb-1"><span class="text-secondary">备份目录：</span><code>data/backups/</code></div>
+        <div class="mb-1"><span class="text-secondary">手机访问：</span>手机连同一个 WiFi，用浏览器打开启动窗口里显示的“手机访问”地址（只读浏览更安全）</div>
+        <div class="mb-1"><span class="text-secondary">技术栈：</span>Python + Flask + SQLite，数据 100% 保存在本机</div>
+        <div class="text-secondary mt-2">记得：数据无价，常备份！</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 操作日志 -->
+  <div class="col-12">
+    <div class="card app-card">
+      <div class="card-header">📋 关键操作日志（最近 50 条：缴费、过户、金额调整等都会留痕）</div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height:360px">
+          <table class="table table-sm table-sm-fixed mb-0 small">
+            <thead><tr><th style="width:10rem">时间</th><th style="width:5rem">模块</th><th style="width:7rem">操作</th><th>详情</th></tr></thead>
+            <tbody>
+              {% for l in logs %}
+              <tr>
+                <td class="text-secondary">{{ l.created_at }}</td>
+                <td>{{ l.module }}</td>
+                <td>{{ l.action }}</td>
+                <td>{{ l.detail }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-secondary py-3">暂无日志</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

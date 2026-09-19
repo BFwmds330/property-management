@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ '修改小区' if community else '新增小区' }} - 物业管家{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card app-card">
+      <div class="card-header">{{ '✏️ 修改小区信息' if community else '🏘 新增小区' }}</div>
+      <div class="card-body">
+        <form method="post"
+              action="{{ url_for('community.community_edit_post', cid=community.id) if community else url_for('community.community_add_post') }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">小区名称 <span class="req">＊</span></label>
+              <input class="form-control" name="name" required maxlength="50"
+                     value="{{ v('name', community.name if community else '') }}" placeholder="例如：阳光花园">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">详细地址</label>
+              <input class="form-control" name="address" maxlength="200"
+                     value="{{ v('address', community.address if community else '') }}" placeholder="例如：幸福路 88 号">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">楼栋数量（参考）</label>
+              <input class="form-control" type="number" min="0" max="999" name="building_count"
+                     value="{{ v('building_count', community.building_count if community else '') }}" placeholder="实际以“楼栋管理”为准">
+              <div class="form-text-hint">仅供记录，实际楼栋在「房屋 → 楼栋」里添加</div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">车位情况</label>
+              <input class="form-control" name="parking_info" maxlength="200"
+                     value="{{ v('parking_info', community.parking_info if community else '') }}" placeholder="例如：地上 80 个、地下 120 个">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">房屋交付日期</label>
+              <input class="form-control" type="date" name="delivery_date"
+                     value="{{ v('delivery_date', community.delivery_date if community else '') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">物业接管日期</label>
+              <input class="form-control" type="date" name="takeover_date"
+                     value="{{ v('takeover_date', community.takeover_date if community else '') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">物业费默认单价（元/㎡/月）</label>
+              <input class="form-control" type="number" step="0.01" min="0" name="default_unit_price"
+                     value="{{ v('default_unit_price', (community.default_unit_price / 100) | string if community else '') }}" placeholder="例如 2.20">
+              <div class="form-text-hint">仅作记录，实际收费以「收费 → 收费项目」为准</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">备注</label>
+              <textarea class="form-control" name="remark" rows="2" maxlength="500">{{ v('remark', community.remark if community else '') }}</textarea>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-success px-4">保存</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('community.community_list') }}">取消</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

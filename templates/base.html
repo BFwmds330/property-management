@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}物业管家（个人版）{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🏠</text></svg>">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark app-navbar sticky-top">
+  <div class="container-fluid app-container">
+    <a class="navbar-brand fw-bold" href="{{ url_for('main.dashboard') }}">🏠 物业管家</a>
+
+    <!-- 顶部小区切换器 -->
+    {% if communities %}
+    <form method="post" action="{{ url_for('community.community_switch', cid=0) }}" id="community-switch-form"
+          class="community-switch" data-next="{{ request.full_path if request.full_path else '/' }}">
+      <input type="hidden" name="next" value="{{ request.full_path if request.full_path else '/' }}">
+      <label class="text-white-50 d-none d-md-inline">当前小区：</label>
+      <select class="form-select form-select-sm community-select" name="dummy" id="community-select" style="width:auto">
+        {% for c in communities %}
+        <option value="{{ c.id }}" {% if cur and cur.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="mainNav">
+      <ul class="navbar-nav me-auto">
+        {% set navs = [
+          ('dashboard', '总览', url_for('main.dashboard')),
+          ('house', '房屋', url_for('house.house_list')),
+          ('resident', '住户', url_for('resident.resident_search')),
+          ('fee', '收费', url_for('fee.bill_list')),
+          ('repair', '报修', url_for('repair.repair_list')),
+          ('report', '报表', url_for('report.report_index')),
+          ('settings', '设置', url_for('system.settings')),
+        ] %}
+        {% for key, label, url in navs %}
+        <li class="nav-item">
+          <a class="nav-link {% if active_nav == key %}active fw-bold{% endif %}" href="{{ url }}">{{ label }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+      <a class="btn btn-warning btn-sm fw-bold" href="{{ url_for('system.backup') }}">⬇ 备份数据</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid app-container mt-3 main-body">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category if category != 'message' else 'primary' }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+
+<footer class="text-center text-secondary small my-4">
+  物业管家（个人版）· 数据保存在本机 data 文件夹 · 记得经常备份
+</footer>
+
+<!-- 通用二次确认弹窗 -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmTitle">请确认</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">再想想</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">确定执行</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 催缴短信弹窗 -->
+<div class="modal fade" id="smsModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">催缴提醒短信（复制后即可发送）</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-secondary mb-1" id="smsHouse"></p>
+        <textarea class="form-control" id="smsText" rows="6" readonly></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        <button type="button" class="btn btn-primary" id="smsCopy">📋 复制短信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

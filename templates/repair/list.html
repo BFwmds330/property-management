@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}报修登记 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🔧 报修登记{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('repair.repair_list', status='pending') }}">待处理</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('repair.repair_list', status='processing') }}">处理中</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('repair.repair_list', status='done') }}">已完成</a>
+    <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addRepair">＋ 新增报修</button>
+  </div>
+</div>
+
+<div class="card app-card">
+  <div class="card-header">报修列表（状态流转：待处理 → 处理中 → 已完成）</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm-fixed mb-0 align-middle">
+        <thead><tr><th>房屋</th><th>报修内容</th><th>状态</th><th>处理备注</th><th>登记时间</th><th>操作</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="fw-bold">{{ r.house_label }}</td>
+            <td>{{ r.content }}</td>
+            <td><span class="badge text-bg-{{ REPAIR_STATUS_COLOR[r.status] }}">{{ REPAIR_STATUS[r.status] }}</span></td>
+            <td class="small text-secondary">{{ r.handler_note or '—' }}</td>
+            <td class="small text-secondary">{{ r.created_at[:10] }}</td>
+            <td class="text-nowrap">
+              {% if r.status == 'pending' %}
+              <form class="d-inline" method="post" action="{{ url_for('repair.repair_status', rid=r.id) }}">
+                <input type="hidden" name="action" value="start">
+                <button class="btn btn-sm btn-outline-warning">开始处理</button>
+              </form>
+              {% elif r.status == 'processing' %}
+              <form class="d-inline" method="post" action="{{ url_for('repair.repair_status', rid=r.id) }}">
+                <input type="hidden" name="action" value="finish">
+                <button class="btn btn-sm btn-outline-success">完成处理</button>
+              </form>
+              {% endif %}
+              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#noteRepair{{ r.id }}">备注</button>
+              <form class="d-inline" method="post" action="{{ url_for('repair.repair_delete', rid=r.id) }}"
+                    data-confirm-title="删除报修记录" data-confirm="确定删除这条报修记录吗？">
+                <button class="btn btn-sm btn-outline-danger">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-secondary py-4">暂无报修记录</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 新增报修弹窗 -->
+<div class="modal fade" id="addRepair" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('repair.repair_add') }}">
+        <div class="modal-header"><h5 class="modal-title">＋ 新增报修</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">房屋（可选）</label>
+            <select class="form-select" name="house_id">
+              <option value="">不指定房屋</option>
+              {% for h in houses %}
+              <option value="{{ h.id }}">{{ h.building_code | replace('#','') }}栋{{ h.unit }}单元{{ h.room_no }}室</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">报修内容 <span class="req">＊</span></label>
+            <textarea class="form-control" name="content" rows="3" required maxlength="500"
+                      placeholder="例如：厨房下水道堵塞"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-success">登记</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 备注弹窗 -->
+{% for r in rows %}
+<div class="modal fade" id="noteRepair{{ r.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('repair.repair_note', rid=r.id) }}">
+        <div class="modal-header"><h5 class="modal-title">处理备注</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <p class="small text-secondary">{{ r.house_label }} · {{ r.content }}</p>
+          <textarea class="form-control" name="handler_note" rows="3" maxlength="500"
+                    placeholder="例如：已联系师傅，明天上午上门">{{ r.handler_note }}</textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-success">保存备注</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}账单管理 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>💰 账单{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-success" href="{{ url_for('fee.fee_items') }}">收费项目</a>
+    <a class="btn btn-outline-success" href="{{ url_for('fee.overdue') }}">欠费管理</a>
+    <a class="btn btn-success" href="{{ url_for('fee.generate_form') }}">生成账单</a>
+  </div>
+</div>
+
+<div class="card app-card mb-3"><div class="card-body py-2">
+  <form class="row g-2 align-items-end">
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">账期</label>
+      <select class="form-select form-select-sm" name="period">
+        <option value="">全部账期</option>
+        {% for p in periods %}
+        <option value="{{ p }}" {{ sel('period', p, f_period) }}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">收费项目</label>
+      <select class="form-select form-select-sm" name="fee_item_id">
+        <option value="">全部项目</option>
+        {% for f in items %}
+        <option value="{{ f.id }}" {{ sel('fee_item_id', f.id, f_item) }}>{{ f.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">状态</label>
+      <select class="form-select form-select-sm" name="status">
+        <option value="">全部状态</option>
+        {% for k, label in BILL_STATUS.items() %}
+        <option value="{{ k }}" {{ sel('status', k, f_status) }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">楼栋</label>
+      <select class="form-select form-select-sm" name="building_id">
+        <option value="">全部楼栋</option>
+        {% for b in buildings %}
+        <option value="{{ b.id }}" {{ sel('building_id', b.id, f_building) }}>{{ b.code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">关键词</label>
+      <input class="form-control form-control-sm" name="keyword" value="{{ f_keyword }}" placeholder="房号/业主">
+    </div>
+    <div class="col-6 col-md-2 d-flex gap-1">
+      <button class="btn btn-sm btn-success flex-grow-1">筛选</button>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('fee.bill_list') }}">重置</a>
+    </div>
+  </form>
+</div></div>
+
+<div class="card app-card">
+  <div class="card-header">共 {{ rows | length }} 笔账单（最多显示 1000 笔，可用筛选缩小范围）</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm-fixed mb-0 align-middle">
+        <thead><tr>
+          <th>房号</th><th>业主</th><th>项目</th><th>账期</th>
+          <th class="text-end">应收(元)</th><th class="text-end">已收(元)</th><th class="text-end">未收(元)</th>
+          <th>状态</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          {% for b in rows %}
+          <tr>
+            <td class="fw-bold">{{ b.house_label }}</td>
+            <td>{{ b.owner_name or '—' }}</td>
+            <td>{{ b.item_name }}</td>
+            <td>{{ b.period }}</td>
+            <td class="text-end">{{ b.amount_receivable | money }}</td>
+            <td class="text-end">{{ b.amount_received | money }}</td>
+            <td class="text-end {% if b.owed_fen > 0 %}owed-red{% endif %}">{% if b.owed_fen > 0 %}{{ b.owed_fen | money }}{% else %}—{% endif %}</td>
+            <td><span class="badge text-bg-{{ BILL_STATUS_COLOR[b.status] }}">{{ BILL_STATUS[b.status] }}</span></td>
+            <td><a class="btn btn-sm btn-outline-success" href="{{ url_for('fee.bill_detail', bill_id=b.id) }}">
+              {% if b.status in ('unpaid', 'partial') %}收款{% else %}详情{% endif %}</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-secondary py-4">没有符合条件的账单。到「生成账单」为某个账期批量生成。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}小区管理 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🏘 小区管理</h5>
+  <a class="btn btn-success" href="{{ url_for('community.community_add') }}">＋ 新增小区</a>
+</div>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-8 col-md-4">
+    <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="按小区名称 / 地址搜索">
+  </div>
+  <div class="col-4 col-md-2">
+    <button class="btn btn-outline-success w-100">搜索</button>
+  </div>
+</form>
+
+{% if rows %}
+<div class="row g-3">
+  {% for c in rows %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card app-card h-100 {% if cur and cur.id == c.id %}border-success border-2{% endif %}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+          <h6 class="fw-bold mb-1">
+            {{ c.name }}
+            {% if c.is_demo %}<span class="badge text-bg-secondary">演示</span>{% endif %}
+            {% if cur and cur.id == c.id %}<span class="badge text-bg-success">当前</span>{% endif %}
+          </h6>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-light" data-bs-toggle="dropdown">⋯</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{{ url_for('community.community_edit', cid=c.id) }}">✏️ 修改信息</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form method="post" action="{{ url_for('community.community_delete', cid=c.id) }}"
+                      data-confirm-title="删除小区「{{ c.name }}」"
+                      data-confirm="删除后，该小区的 <b>{{ c.buildings_real }}</b> 栋楼、<b>{{ c.houses }}</b> 套房屋、住户登记和 <b>{{ c.bills }}</b> 笔账单将<b class='text-danger'>一并删除，且无法恢复</b>！<br><br>建议先在“设置”里备份数据。确定要删除吗？">
+                  <button class="dropdown-item text-danger">🗑 删除小区</button>
+                </form>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="text-secondary small mb-2">📍 {{ c.address or '（未填地址）' }}</div>
+        <div class="row text-center small g-0">
+          <div class="col-3"><div class="fw-bold">{{ c.buildings_real }}</div>楼栋</div>
+          <div class="col-3"><div class="fw-bold">{{ c.houses }}</div>房屋</div>
+          <div class="col-3"><div class="fw-bold">{{ c.occupied }}</div>已入住</div>
+          <div class="col-3"><div class="fw-bold {% if c.owed_fen > 0 %}text-danger{% endif %}">{{ c.owed_fen | money }}</div>欠费(元)</div>
+        </div>
+        <div class="mt-2">
+          <form method="post" action="{{ url_for('community.community_switch', cid=c.id) }}">
+            <input type="hidden" name="next" value="{{ url_for('main.dashboard') }}">
+            <button class="btn btn-sm {% if cur and cur.id == c.id %}btn-secondary disabled{% else %}btn-outline-success{% endif %} w-100">
+              {% if cur and cur.id == c.id %}当前使用中{% else %}切换到这个小区{% endif %}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+  <div style="font-size:3rem">🏘</div>
+  <p class="mt-2">{{ '没有找到匹配的小区' if keyword else '还没有小区，点右上角“新增小区”开始使用' }}</p>
+</div>
+{% endif %}
+{% endblock %}

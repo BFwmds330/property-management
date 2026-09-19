@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}生成账单 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🧮 生成账单{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <a class="btn btn-outline-secondary" href="{{ url_for('fee.fee_items') }}">收费项目配置</a>
+</div>
+
+{% if not items %}
+<div class="alert alert-warning">
+  还没有启用中的收费项目。请先到 <a href="{{ url_for('fee.fee_items') }}">收费项目配置</a> 添加（如“物业费”）。
+</div>
+{% else %}
+
+<div class="card app-card mb-3">
+  <div class="card-header">第 1 步：选择收费项目和账期</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('fee.generate_post') }}" class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">收费项目 <span class="req">＊</span></label>
+        <select class="form-select" name="fee_item_id" id="feeItem" required>
+          {% for f in items %}
+          <option value="{{ f.id }}" data-cycle="{{ f.cycle }}" {{ sel('fee_item_id', f.id, form.fee_item_id if form else '') }}>{{ f.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">账期 <span class="req">＊</span></label>
+        <input class="form-control" name="period" id="periodInput" required
+               value="{{ v('period', form.period if form else today[:7]) }}" placeholder="如 2026-09">
+        <div class="form-text-hint" id="periodHint">格式：年-月，例如 2026-09</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">范围</label>
+        <select class="form-select" name="building_id">
+          <option value="">全部楼栋</option>
+          {% for b in buildings %}
+          <option value="{{ b.id }}" {{ sel('building_id', b.id, form.building_id if form else '') }}>{{ b.code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">房屋状态</label>
+        <select class="form-select" name="status_scope">
+          <option value="all" {{ sel('status_scope', 'all', form.status_scope if form else '') }}>全部房屋</option>
+          <option value="occupied" {{ sel('status_scope', 'occupied', form.status_scope if form else '') }}>仅已入住（自住/出租）</option>
+          <option value="vacant" {{ sel('status_scope', 'vacant', form.status_scope if form else '') }}>仅空置</option>
+        </select>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-success px-4">预览要生成的账单</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if preview %}
+<div class="card app-card">
+  <div class="card-header">第 2 步：确认预览</div>
+  <div class="card-body">
+    <div class="row g-3 mb-3">
+      <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">收费项目</span><b>{{ preview.fee_item.name }}</b></div></div>
+      <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">账期</span><b>{{ preview.period }}</b>（{{ preview.months }} 个月）</div></div>
+      <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">将生成</span><b>{{ preview.count }}</b> 户账单{% if preview.zero_count %}<span class="text-warning-emphasis">（含 {{ preview.zero_count }} 户面积为 0，金额为 0，请补面积后重算）</span>{% endif %}</div></div>
+      <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">应收合计</span><b class="text-danger fs-5">¥{{ preview.total_fen | money }}</b></div></div>
+    </div>
+    <div class="table-responsive" style="max-height:320px">
+      <table class="table table-sm table-hover table-sm-fixed mb-0">
+        <thead><tr><th>房号</th><th>业主</th><th>面积(㎡)</th><th class="text-end">应收(元)</th></tr></thead>
+        <tbody>
+          {% for line in preview.lines %}
+          <tr>
+            <td>{{ line.house.building_code | replace('#','') }}栋{{ line.house.unit }}单元{{ line.house.room_no }}室</td>
+            <td>{{ line.house.owner_name or '—' }}</td>
+            <td>{{ line.house.area_100 | area }}</td>
+            <td class="text-end">{{ line.amount_fen | money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <form method="post" action="{{ url_for('fee.generate_confirm') }}" class="mt-3 d-flex gap-2">
+      <input type="hidden" name="fee_item_id" value="{{ preview.fee_item.id }}">
+      <input type="hidden" name="period" value="{{ preview.period }}">
+      <input type="hidden" name="building_id" value="{{ form.building_id or 0 }}">
+      <input type="hidden" name="status_scope" value="{{ form.status_scope or 'all' }}">
+      <button class="btn btn-primary px-4"
+              data-confirm-title="确认生成账单"
+              data-confirm="将为 <b>{{ preview.count }}</b> 户生成「{{ preview.fee_item.name }}」账期 <b>{{ preview.period }}</b> 的账单，应收合计 <b>¥{{ preview.total_fen | money }}</b>。<br>确定生成吗？">✅ 确认生成</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('fee.generate_form') }}">重新选择</a>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 根据收费项目的计费周期，提示账期格式
+(function () {
+  var sel = document.getElementById("feeItem");
+  var input = document.getElementById("periodInput");
+  var hint = document.getElementById("periodHint");
+  var fmt = { month: "格式：年-月，例如 2026-09",
+              quarter: "格式：年-季度，例如 2026-Q3（第 3 季度）",
+              year: "格式：年份，例如 2026" };
+  function update() {
+    var opt = sel.options[sel.selectedIndex];
+    var cycle = opt.getAttribute("data-cycle");
+    if (hint) hint.textContent = fmt[cycle] || fmt.month;
+    input.placeholder = cycle === "quarter" ? "如 2026-Q3" : (cycle === "year" ? "如 2026" : "如 2026-09");
+  }
+  sel.addEventListener("change", update);
+  update();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}户型管理 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>📐 户型管理{% if cur %} · {{ cur.name }}{% endif %}</h5>
+</div>
+
+<div class="card app-card mb-3">
+  <div class="card-header">＋ 新增户型</div>
+  <div class="card-body">
+    <form class="row g-2 align-items-end" method="post" action="{{ url_for('htype.htype_add') }}">
+      <div class="col-6 col-md-3">
+        <label class="form-label small">户型名称 <span class="req">＊</span></label>
+        <input class="form-control form-control-sm" name="name" required maxlength="50" placeholder="如：三室两厅两卫 A 户型">
+      </div>
+      <div class="col-4 col-md-1">
+        <label class="form-label small">室</label>
+        <input class="form-control form-control-sm" type="number" name="rooms" min="0" max="20" value="3">
+      </div>
+      <div class="col-4 col-md-1">
+        <label class="form-label small">厅</label>
+        <input class="form-control form-control-sm" type="number" name="halls" min="0" max="20" value="2">
+      </div>
+      <div class="col-4 col-md-1">
+        <label class="form-label small">卫</label>
+        <input class="form-control form-control-sm" type="number" name="baths" min="0" max="20" value="1">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">建筑面积(㎡)</label>
+        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="area">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">朝向</label>
+        <input class="form-control form-control-sm" name="orientation" maxlength="20" placeholder="南北">
+      </div>
+      <div class="col-6 col-md-1">
+        <label class="form-label small d-block">阳台</label>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="has_balcony" value="1" id="bal">
+          <label class="form-check-label small" for="bal">有</label>
+        </div>
+      </div>
+      <div class="col-6 col-md-1">
+        <button class="btn btn-success btn-sm w-100">添加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card app-card">
+  <div class="card-header">户型库 · 共 {{ rows | length }} 种户型，覆盖 {{ total_houses }} 套房屋</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 table-sm-fixed align-middle">
+        <thead><tr><th>名称</th><th>室/厅/卫</th><th>建筑面积(㎡)</th><th>朝向</th><th>阳台</th><th>使用房屋数</th><th>操作</th></tr></thead>
+        <tbody>
+          {% for t in rows %}
+          <tr>
+            <td class="fw-bold">{{ t.name }}</td>
+            <td>{{ t.rooms }}室{{ t.halls }}厅{{ t.baths }}卫</td>
+            <td>{{ t.area_100 | area }}</td>
+            <td>{{ t.orientation or '—' }}</td>
+            <td>{{ '有' if t.has_balcony else '无' }}</td>
+            <td>{{ t.used_count }} 套</td>
+            <td class="text-nowrap">
+              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editType{{ t.id }}">编辑</button>
+              <form class="d-inline" method="post" action="{{ url_for('htype.htype_delete', tid=t.id) }}"
+                    data-confirm-title="删除户型"
+                    data-confirm="确定删除户型「{{ t.name }}」吗？<br>{% if t.used_count %}<b class='text-danger'>有 {{ t.used_count }} 套房屋正在使用它，删除会被系统拒绝。</b><br>{% endif %}确定继续吗？">
+                <button class="btn btn-sm btn-outline-danger">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-secondary py-4">还没有户型，用上方表单添加</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% for t in rows %}
+<div class="modal fade" id="editType{{ t.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('htype.htype_edit', tid=t.id) }}">
+        <div class="modal-header"><h5 class="modal-title">编辑户型</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          {% if t.used_count %}
+          <div class="alert alert-warning small py-2">注意：有 <b>{{ t.used_count }} 套房屋</b>正在使用这个户型，修改后它们的信息会同步变化。</div>
+          {% endif %}
+          <div class="row g-3">
+            <div class="col-12"><label class="form-label">户型名称</label>
+              <input class="form-control" name="name" value="{{ t.name }}" required maxlength="50"></div>
+            <div class="col-4"><label class="form-label">室</label>
+              <input class="form-control" type="number" name="rooms" min="0" max="20" value="{{ t.rooms }}"></div>
+            <div class="col-4"><label class="form-label">厅</label>
+              <input class="form-control" type="number" name="halls" min="0" max="20" value="{{ t.halls }}"></div>
+            <div class="col-4"><label class="form-label">卫</label>
+              <input class="form-control" type="number" name="baths" min="0" max="20" value="{{ t.baths }}"></div>
+            <div class="col-4"><label class="form-label">建筑面积(㎡)</label>
+              <input class="form-control" type="number" step="0.01" min="0" name="area" value="{{ t.area_100 | area }}"></div>
+            <div class="col-4"><label class="form-label">朝向</label>
+              <input class="form-control" name="orientation" value="{{ t.orientation }}" maxlength="20"></div>
+            <div class="col-4"><label class="form-label d-block">阳台</label>
+              <div class="form-check"><input class="form-check-input" type="checkbox" name="has_balcony" value="1" id="tb{{ t.id }}" {% if t.has_balcony %}checked{% endif %}>
+                <label class="form-check-label small" for="tb{{ t.id }}">有阳台</label></div></div>
+            <div class="col-12"><label class="form-label">备注</label>
+              <input class="form-control" name="remark" value="{{ t.remark }}" maxlength="200"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-success">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

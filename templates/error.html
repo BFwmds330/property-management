@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}出错了 - 物业管家{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+  <div style="font-size:4rem">😕</div>
+  <h4 class="mt-3">{{ msg or '页面出错了' }}</h4>
+  <p class="text-secondary">错误代码：{{ code }}</p>
+  <a class="btn btn-success" href="{{ url_for('main.dashboard') }}">回到首页</a>
+</div>
+{% endblock %}

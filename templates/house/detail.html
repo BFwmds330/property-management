@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}房屋详情 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🏠 {{ house.building_code | replace('#','') }}栋{{ house.unit }}单元{{ house.room_no }}室</h5>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-success btn-sm" href="{{ url_for('fee.payall_form', hid=house.id) }}">💵 一键缴清</a>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('house.house_transfer', hid=house.id) }}">🔀 产权过户</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('house.house_edit', hid=house.id) }}">✏️ 编辑</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- 左：房屋信息 + 住户 -->
+  <div class="col-lg-7">
+    <div class="card app-card mb-3">
+      <div class="card-header">房屋信息</div>
+      <div class="card-body">
+        <div class="row small g-2">
+          <div class="col-6 col-md-4"><span class="text-secondary">状态：</span>
+            <span class="badge text-bg-{{ HOUSE_STATUS_COLOR[house.status] }}">{{ HOUSE_STATUS[house.status] }}</span></div>
+          <div class="col-6 col-md-4"><span class="text-secondary">建筑面积：</span>{{ house.area_100 | area }} ㎡</div>
+          <div class="col-6 col-md-4"><span class="text-secondary">套内面积：</span>{{ house.inner_area_100 | area }} ㎡</div>
+          <div class="col-6 col-md-4"><span class="text-secondary">户型：</span>{{ house.type_name or '未绑定' }}</div>
+          <div class="col-6 col-md-4"><span class="text-secondary">业主：</span>
+            {% if house.owner_name %}{{ house.owner_name }}{% if house.owner_phone %}（{{ house.owner_phone }}）{% endif %}
+            {% else %}<span class="text-secondary">未登记</span>{% endif %}</div>
+          <div class="col-6 col-md-4"><span class="text-secondary">入住日期：</span>{{ house.occupied_date or '—' }}</div>
+          <div class="col-12"><span class="text-secondary">欠费：</span>
+            {% if house.owed_fen > 0 %}<span class="owed-red">¥{{ house.owed_fen | money }}</span>
+            {% else %}<span class="text-success">无欠费</span>{% endif %}</div>
+          {% if house.remark %}<div class="col-12"><span class="text-secondary">备注：</span>{{ house.remark }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card app-card mb-3">
+      <div class="card-header">👥 当前住户</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 table-sm-fixed">
+            <thead><tr><th>身份</th><th>姓名</th><th>手机号</th><th>备注</th><th>操作</th></tr></thead>
+            <tbody>
+              {% for r in residents %}
+              <tr>
+                <td><span class="badge text-white badge-role-{{ r.role }}">{{ ROLE[r.role] }}</span>
+                  {% if r.role == 'member' and r.relation %}<span class="small text-secondary">{{ r.relation }}</span>{% endif %}
+                  {% if r.role == 'tenant' and r.lease_end %}<div class="small text-secondary">租期至 {{ r.lease_end }}</div>{% endif %}
+                  {% if r.role == 'member' %}<div class="small text-secondary">{{ '常住' if r.is_living else '不常住' }}</div>{% endif %}
+                </td>
+                <td class="fw-bold">{{ r.name }}</td>
+                <td>{{ r.phone or '—' }}</td>
+                <td class="small text-secondary">{{ r.person_remark or '' }}</td>
+                <td class="text-nowrap">
+                  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('resident.resident_edit', link_id=r.id) }}">编辑</a>
+                  {% if r.role != 'owner' %}
+                  <form class="d-inline" method="post" action="{{ url_for('resident.resident_move_out', link_id=r.id) }}"
+                        data-confirm-title="登记搬出"
+                        data-confirm="确定让 <b>{{ r.name }}</b> 从本房屋搬出吗？<br>其信息会转入“历史住户”，不会删除。">
+                    <button class="btn btn-sm btn-outline-warning">搬出</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-secondary py-3">还没有登记住户，用下面按钮添加</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card-footer bg-white d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-success" href="{{ url_for('resident.resident_add', house_id=house.id, role='member') }}">＋ 家庭成员</a>
+        <a class="btn btn-sm btn-outline-success" href="{{ url_for('resident.resident_add', house_id=house.id, role='tenant') }}">＋ 租户</a>
+        {% if not house.owner_name %}
+        <a class="btn btn-sm btn-outline-success" href="{{ url_for('resident.resident_add', house_id=house.id, role='owner') }}">＋ 登记业主</a>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-secondary ms-auto" href="{{ url_for('resident.resident_export') }}">导出通讯录</a>
+      </div>
+    </div>
+
+    <div class="card app-card">
+      <div class="card-header">📜 历史住户（时间线）</div>
+      <div class="card-body">
+        {% if history %}
+        <ul class="timeline mb-0">
+          {% for h in history %}
+          <li>
+            <div class="small">
+              <span class="badge text-white badge-role-{{ h.role }}">{{ ROLE[h.role] }}</span>
+              <b>{{ h.name }}</b>
+              {% if h.is_current %}
+                <span class="badge text-bg-success">在住</span>
+              {% else %}
+                <span class="badge text-bg-secondary">已搬出</span>
+              {% endif %}
+            </div>
+            <div class="small text-secondary">
+              {{ h.start_date or h.created_at[:10] }} 起
+              {% if not h.is_current %} · {{ h.end_date or '' }} 搬出{% endif %}
+              {% if h.role == 'tenant' and h.lease_start %} · 租期 {{ h.lease_start }} ~ {{ h.lease_end }}（月租 {{ h.monthly_rent | money }} 元）{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="text-secondary small mb-0">暂无历史记录</p>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：账单 -->
+  <div class="col-lg-5">
+    <div class="card app-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>💰 账单（近 60 笔）</span>
+        <a class="small" href="{{ url_for('fee.bill_list', keyword=house.building_code | replace('#','') ~ '-' ~ house.unit ~ '-' ~ house.room_no) }}">在收费页查看</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height:520px">
+          <table class="table table-hover mb-0 table-sm-fixed">
+            <thead><tr><th>项目 / 账期</th><th class="text-end">应收</th><th class="text-end">未收</th><th>状态</th><th></th></tr></thead>
+            <tbody>
+              {% for b in bills %}
+              <tr>
+                <td>{{ b.item_name }}<div class="small text-secondary">{{ b.period }}</div></td>
+                <td class="text-end">{{ b.amount_receivable | money }}</td>
+                <td class="text-end {% if b.owed_fen > 0 %}owed-red{% endif %}">{% if b.owed_fen > 0 %}{{ b.owed_fen | money }}{% else %}—{% endif %}</td>
+                <td><span class="badge text-bg-{{ BILL_STATUS_COLOR[b.status] }}">{{ BILL_STATUS[b.status] }}</span></td>
+                <td><a class="btn btn-sm btn-outline-success" href="{{ url_for('fee.bill_detail', bill_id=b.id) }}">收款</a></td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-secondary py-3">这套房还没有账单。到「收费 → 生成账单」为整个小区生成。</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

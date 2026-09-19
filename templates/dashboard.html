@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}总览 - {{ cur.name if cur else '物业管家' }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>📊 总览{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-success btn-sm" href="{{ url_for('fee.generate_form') }}">生成账单</a>
+    <a class="btn btn-outline-success btn-sm" href="{{ url_for('fee.overdue') }}">欠费管理</a>
+  </div>
+</div>
+
+<!-- 房屋与收费总览 -->
+<div class="row g-3">
+  <div class="col-6 col-md-3">
+    <div class="card app-card stat-card h-100"><div class="card-body">
+      <div class="text-secondary small">房屋总数</div>
+      <div class="stat-num">{{ data.total_houses }}</div>
+      <div class="stat-sub">已入住 {{ data.occupied }} 套 · 入住率 {{ data.occupancy }}%</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card app-card stat-card h-100"><div class="card-body">
+      <div class="text-secondary small">{{ data.month }} 应收</div>
+      <div class="stat-num">¥{{ data.month_recv_fen | money }}</div>
+      <div class="stat-sub">共 {{ data.month_bill_count }} 笔账单</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card app-card stat-card h-100"><div class="card-body">
+      <div class="text-secondary small">{{ data.month }} 已收</div>
+      <div class="stat-num">¥{{ data.month_got_fen | money }}</div>
+      <div class="stat-sub">收缴率 {% if data.month_rate is not none %}{{ data.month_rate }}%{% else %}—{% endif %}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card app-card stat-card h-100"><div class="card-body">
+      <div class="text-secondary small">欠费总额（全部账期）</div>
+      <div class="stat-num {% if data.owed_fen > 0 %}text-danger{% endif %}">¥{{ data.owed_fen | money }}</div>
+      <div class="stat-sub">欠费 {{ data.owed_houses }} 户</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- 待办提醒 -->
+<div class="row g-3 mt-1">
+  <div class="col-md-4">
+    <div class="card app-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>💰 本月待收</span>
+        <a class="small" href="{{ url_for('fee.bill_list', status='unpaid') }}">去收费</a>
+      </div>
+      <div class="card-body">
+        {% if data.todo_bills %}
+          <p class="display-6 fw-bold text-danger mb-0">{{ data.todo_bills }} <span class="fs-6 fw-normal text-secondary">笔未缴清</span></p>
+        {% else %}<p class="text-secondary mb-0">本月账单都收齐了，棒！</p>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card app-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>🔑 30 天内到期租约</span>
+        <a class="small" href="{{ url_for('resident.resident_search') }}">查住户</a>
+      </div>
+      <div class="card-body py-2">
+        {% if data.leases %}
+          {% for l in data.leases %}
+            <div class="d-flex justify-content-between border-bottom py-1 small">
+              <span>{{ l.name }} · {{ l.building_code | replace('#','') }}栋{{ l.unit }}单元{{ l.room_no }}室</span>
+              <span class="text-warning-emphasis fw-bold">{{ l.lease_end }} 到期</span>
+            </div>
+          {% endfor %}
+        {% else %}<p class="text-secondary small mb-0">没有 30 天内到期的租约</p>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card app-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>🎂 近期生日 · 🔧 待办报修</span>
+        <a class="small" href="{{ url_for('repair.repair_list') }}">去报修</a>
+      </div>
+      <div class="card-body py-2">
+        {% for b in data.birthdays %}
+          <div class="d-flex justify-content-between border-bottom py-1 small">
+            <span>🎂 {{ b.name }}（{{ b.label }}）</span>
+            <span class="text-secondary">{{ b.date }}</span>
+          </div>
+        {% endfor %}
+        {% if data.repairs %}
+          <div class="d-flex justify-content-between py-1 small">
+            <span>🔧 有 {{ data.repairs }} 条报修未完成</span>
+          </div>
+        {% endif %}
+        {% if not data.birthdays and not data.repairs %}
+          <p class="text-secondary small mb-0">最近没有生日提醒，也没有待办报修</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 最近收款 -->
+<div class="card app-card mt-3">
+  <div class="card-header">🧾 最近收款</div>
+  <div class="card-body p-0">
+    {% if recent %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 table-sm-fixed">
+        <thead><tr><th>日期</th><th>房号</th><th>项目</th><th>账期</th><th class="text-end">金额（元）</th><th>方式</th></tr></thead>
+        <tbody>
+          {% for r in recent %}
+          <tr>
+            <td>{{ r.pay_date }}</td>
+            <td>{{ r.building_code | replace('#','') }}栋{{ r.unit }}单元{{ r.room_no }}室</td>
+            <td>{{ r.item_name }}</td>
+            <td>{{ r.period }}</td>
+            <td class="text-end fw-bold">{{ r.amount | money }}</td>
+            <td>{{ r.method }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-secondary p-3 mb-0">还没有收款记录。到「收费 → 生成账单」先生成账单，再到账单上点“收款”。</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

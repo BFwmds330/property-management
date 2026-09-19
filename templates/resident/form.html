@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑住户' if person else '登记住户' }} - 物业管家{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="alert alert-info small">
+      正在为 <b>{{ house.building_code | replace('#','') }}栋{{ house.unit }}单元{{ house.room_no }}室</b>
+      {{ '编辑' if person else '登记' }}
+      <b>{{ ROLE[role] }}</b>{% if role == 'owner' %}（业主将同时登记为本房屋的产权人）{% endif %}
+    </div>
+    <div class="card app-card">
+      <div class="card-header">👤 {{ '编辑住户信息' if person else '住户信息' }}</div>
+      <div class="card-body">
+        <form method="post"
+              action="{{ url_for('resident.resident_edit_post', link_id=link.id) if person else url_for('resident.resident_add_post') }}">
+          {% if not person %}<input type="hidden" name="house_id" value="{{ house.id }}">{% endif %}
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">姓名 <span class="req">＊</span></label>
+              <input class="form-control" name="name" required maxlength="50" value="{{ v('name', person.name if person else '') }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">性别</label>
+              <select class="form-select" name="gender">
+                <option value="" {{ sel('gender', '', person.gender if person else '') }}>未知</option>
+                <option value="男" {{ sel('gender', '男', person.gender if person else '') }}>男</option>
+                <option value="女" {{ sel('gender', '女', person.gender if person else '') }}>女</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">出生日期</label>
+              <input class="form-control" type="date" name="birth_date" value="{{ v('birth_date', person.birth_date if person else '') }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">证件号</label>
+              <input class="form-control" name="id_number" maxlength="18" value="{{ v('id_number', person.id_number if person else '') }}" placeholder="18 位身份证号">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">手机号</label>
+              <input class="form-control" name="phone" maxlength="20" value="{{ v('phone', person.phone if person else '') }}" placeholder="11 位数字">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">工作单位</label>
+              <input class="form-control" name="work_unit" maxlength="100" value="{{ v('work_unit', person.work_unit if person else '') }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">紧急联系人</label>
+              <input class="form-control" name="emergency_name" maxlength="50" value="{{ v('emergency_name', person.emergency_name if person else '') }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">紧急联系人电话</label>
+              <input class="form-control" name="emergency_phone" maxlength="20" value="{{ v('emergency_phone', person.emergency_phone if person else '') }}">
+            </div>
+
+            <div class="col-12"><hr class="my-1"></div>
+
+            <div class="col-md-4">
+              <label class="form-label">与业主的关系</label>
+              {% if role == 'member' %}
+              <select class="form-select" name="relation">
+                <option value="">请选择</option>
+                {% for rel in RELATIONS %}
+                <option value="{{ rel }}" {{ sel('relation', rel, link.relation if link else '') }}>{{ rel }}</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <input class="form-control" name="relation" maxlength="20" value="{{ v('relation', link.relation if link else '') }}"
+                     {% if role == 'tenant' %}placeholder="可不填"{% else %}disabled{% endif %}>
+              {% endif %}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">入住/登记日期</label>
+              <input class="form-control" type="date" name="start_date" value="{{ v('start_date', link.start_date if link else today) }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label d-block">是否常住</label>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="is_living" value="1" id="living" {{ chk('is_living', (link.is_living if link else 1) == 1) }}>
+                <label class="form-check-label" for="living">常住本房屋</label>
+              </div>
+            </div>
+
+            {% if role == 'tenant' %}
+            <div class="col-12"><hr class="my-1"><label class="form-label fw-bold">租约信息</label></div>
+            <div class="col-md-3">
+              <label class="form-label">租期开始</label>
+              <input class="form-control" type="date" name="lease_start" value="{{ v('lease_start', link.lease_start if link else today) }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">租期结束</label>
+              <input class="form-control" type="date" name="lease_end" value="{{ v('lease_end', link.lease_end if link else '') }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">月租金（元，选填）</label>
+              <input class="form-control" type="number" step="0.01" min="0" name="monthly_rent"
+                     value="{{ v('monthly_rent', (link.monthly_rent / 100) | string if link and link.monthly_rent else '') }}">
+            </div>
+            {% endif %}
+
+            <div class="col-12">
+              <label class="form-label">备注</label>
+              <textarea class="form-control" name="remark" rows="2" maxlength="300">{{ v('remark', person.remark if person else '') }}</textarea>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-success px-4">保存</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('house.house_detail', hid=house.id) }}">取消</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

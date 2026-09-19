@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}产权过户 - 物业管家{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="alert alert-warning small">
+      正在为 <b>{{ house.building_code | replace('#','') }}栋{{ house.unit }}单元{{ house.room_no }}室</b> 办理产权过户。
+      当前登记业主：<b>{{ house.owner_name or '（未登记）' }}</b>。
+      过户后旧业主信息自动转入“历史住户”，可随时查看。
+    </div>
+    <div class="card app-card">
+      <div class="card-header">🔀 产权过户</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('house.house_transfer_post', hid=house.id) }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">过户日期 <span class="req">＊</span></label>
+              <input class="form-control" type="date" name="transfer_date" required value="{{ v('transfer_date', today) }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-bold">新业主</label>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="owner_mode" id="omNew" value="new" checked>
+                <label class="form-check-label" for="omNew">新建业主信息</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="owner_mode" id="omExist" value="existing">
+                <label class="form-check-label" for="omExist">从已有住户中选择</label>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">新业主姓名 <span class="req">＊</span></label>
+              <input class="form-control" name="owner_name" maxlength="50" value="{{ v('owner_name') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">手机号</label>
+              <input class="form-control" name="owner_phone" maxlength="20" value="{{ v('owner_phone') }}" placeholder="11 位数字">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">证件号</label>
+              <input class="form-control" name="owner_id_number" maxlength="18" value="{{ v('owner_id_number') }}" placeholder="18 位身份证号">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">已有住户</label>
+              <select class="form-select" name="owner_resident_id">
+                <option value="">请选择</option>
+                {% for r in residents %}
+                <option value="{{ r.resident_id }}">{{ r.name }}{% if r.phone %}（{{ r.phone }}）{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary px-4"
+                    data-confirm-title="确认产权过户"
+                    data-confirm="确定将本房屋业主变更为新业主吗？<br><br>旧业主（{{ house.owner_name or '未登记' }}）的信息将转入历史记录。">确认过户</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('house.house_detail', hid=house.id) }}">取消</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

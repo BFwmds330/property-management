@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}报表统计 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>📈 报表统计</h5>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-success" href="{{ url_for('report.export_summary', month=data.month, year=data.year, scope=data.scope) }}">⬇ 导出应收实收</a>
+    <a class="btn btn-outline-success" href="{{ url_for('report.export_top', month=data.month, year=data.year, scope=data.scope) }}">⬇ 导出欠费Top10</a>
+    <a class="btn btn-outline-success" href="{{ url_for('report.export_communities', month=data.month, year=data.year, scope=data.scope) }}">⬇ 导出小区对比</a>
+  </div>
+</div>
+
+<div class="card app-card mb-3"><div class="card-body py-2">
+  <form class="row g-2 align-items-end">
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">统计维度</label>
+      <select class="form-select form-select-sm" name="mode" id="modeSel">
+        <option value="month" {{ 'selected' if data.mode == 'month' }}>按月</option>
+        <option value="year" {{ 'selected' if data.mode == 'year' }}>按年</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2" id="monthBox">
+      <label class="form-label small mb-1">账期月份</label>
+      <input class="form-control form-control-sm" type="month" name="month" value="{{ data.month or today[:7] }}">
+    </div>
+    <div class="col-6 col-md-2 d-none" id="yearBox">
+      <label class="form-label small mb-1">年份</label>
+      <select class="form-select form-select-sm" name="year">
+        {% set y = today[:4] | int %}
+        {% for yy in range(y - 3, y + 2) %}
+        <option value="{{ yy }}" {{ 'selected' if data.year == yy|string or (not data.year and yy == y) }}>{{ yy }} 年</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small mb-1">统计范围</label>
+      <select class="form-select form-select-sm" name="scope">
+        <option value="current" {{ 'selected' if data.scope == 'current' }}>当前小区（{{ data.current_community }}）</option>
+        <option value="all" {{ 'selected' if data.scope == 'all' }}>全部小区</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2 d-grid">
+      <button class="btn btn-sm btn-success">开始统计</button>
+    </div>
+  </form>
+</div></div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3"><div class="card app-card stat-card h-100"><div class="card-body">
+    <span class="text-secondary small">{{ data.label }}应收</span>
+    <div class="stat-num">¥{{ data.recv_fen | money }}</div>
+    <div class="stat-sub">共 {{ data.cnt }} 笔账单</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card app-card stat-card h-100"><div class="card-body">
+    <span class="text-secondary small">{{ data.label }}实收</span>
+    <div class="stat-num text-success">¥{{ data.got_fen | money }}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card app-card stat-card h-100"><div class="card-body">
+    <span class="text-secondary small">未收</span>
+    <div class="stat-num {% if data.recv_fen - data.got_fen > 0 %}text-danger{% endif %}">¥{{ (data.recv_fen - data.got_fen) | money }}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card app-card stat-card h-100"><div class="card-body">
+    <span class="text-secondary small">收缴率（实收÷应收）</span>
+    <div class="stat-num">{% if data.rate is not none %}{{ data.rate }}%{% else %}—{% endif %}</div>
+  </div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header">按收费项目统计（{{ data.label }}）</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm-fixed mb-0">
+            <thead><tr><th>项目</th><th class="text-end">应收(元)</th><th class="text-end">实收(元)</th><th class="text-end">收缴率</th><th class="text-end">笔数</th></tr></thead>
+            <tbody>
+              {% for r in data.by_item %}
+              <tr>
+                <td>{{ r.item_name }}</td>
+                <td class="text-end">{{ r.recv | money }}</td>
+                <td class="text-end">{{ r.got | money }}</td>
+                <td class="text-end">{{ (r.got * 100 / r.recv) | round | int }}%</td>
+                <td class="text-end">{{ r.cnt }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-secondary py-3">所选范围内没有账单</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card app-card h-100 mb-3">
+      <div class="card-header">🏆 欠费金额 Top 10 房源（{{ data.label }}）</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm-fixed mb-0">
+            <thead><tr><th>#</th><th>房号</th><th>业主</th><th class="text-end">欠费(元)</th><th class="text-end">笔数</th></tr></thead>
+            <tbody>
+              {% for r in data.top_owed %}
+              <tr>
+                <td class="text-secondary">{{ loop.index }}</td>
+                <td class="fw-bold">{{ r.house_label }}</td>
+                <td>{{ r.owner_name or '—' }}</td>
+                <td class="text-end owed-red">{{ r.owed_fen | money }}</td>
+                <td class="text-end">{{ r.cnt }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-success py-3">所选范围内没有欠费 🎉</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card app-card">
+      <div class="card-header">🏘 各小区收缴率对比（{{ data.label }}）</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm-fixed mb-0">
+            <thead><tr><th>小区</th><th class="text-end">应收(元)</th><th class="text-end">实收(元)</th><th class="text-end">收缴率</th></tr></thead>
+            <tbody>
+              {% for r in data.communities %}
+              <tr>
+                <td>{{ r.name }}{% if cur and r.id == cur.id %} <span class="badge text-bg-success">当前</span>{% endif %}</td>
+                <td class="text-end">{{ r.recv | money }}</td>
+                <td class="text-end">{{ r.got | money }}</td>
+                <td class="text-end fw-bold">{% if r.recv %}{{ (r.got * 100 / r.recv) | round | int }}%{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var mode = document.getElementById("modeSel");
+  function toggle() {
+    document.getElementById("monthBox").classList.toggle("d-none", mode.value === "year");
+    document.getElementById("yearBox").classList.toggle("d-none", mode.value !== "year");
+  }
+  mode.addEventListener("change", toggle);
+  toggle();
+})();
+</script>
+{% endblock %}

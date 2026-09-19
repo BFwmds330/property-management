@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}住户搜索 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>👥 住户{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <a class="btn btn-outline-success" href="{{ url_for('resident.resident_export') }}">⬇ 导出通讯录（CSV）</a>
+</div>
+
+<div class="card app-card mb-3"><div class="card-body py-2">
+  <form class="row g-2 align-items-end">
+    <div class="col-8 col-md-5">
+      <label class="form-label small mb-1">按 姓名 / 手机号 / 证件号 / 房号 搜索</label>
+      <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="例如：张三 或 13812345678 或 1-1-1501" autofocus>
+    </div>
+    <div class="col-4 col-md-2">
+      <button class="btn btn-success w-100">搜索</button>
+    </div>
+  </form>
+</div></div>
+
+{% if keyword %}
+<div class="card app-card">
+  <div class="card-header">搜索“{{ keyword }}”的结果（{{ rows | length }} 条，含历史住户）</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 table-sm-fixed align-middle">
+        <thead><tr><th>姓名</th><th>身份</th><th>房号</th><th>手机号</th><th>证件号</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="fw-bold">{{ r.name }}</td>
+            <td><span class="badge text-white badge-role-{{ r.role }}">{{ ROLE[r.role] }}</span>
+              {% if r.relation %}<span class="small text-secondary">{{ r.relation }}</span>{% endif %}</td>
+            <td>{{ r.building_code | replace('#','') }}栋{{ r.unit }}单元{{ r.room_no }}室</td>
+            <td>{{ r.phone or '—' }}</td>
+            <td class="small">{{ r.id_number or '—' }}</td>
+            <td>{% if r.is_current %}<span class="badge text-bg-success">在住</span>
+                {% else %}<span class="badge text-bg-secondary">历史</span>{% endif %}</td>
+            <td><a class="btn btn-sm btn-outline-success" href="{{ url_for('house.house_detail', hid=r.house_id) }}">查看房屋</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-secondary py-4">没有找到匹配的住户。试试只输入姓名的一部分？</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-secondary">
+  <div style="font-size:3rem">🔍</div>
+  <p class="mt-2">输入关键词搜索本小区的住户；<br>给某套房登记住户，请到「房屋 → 房屋详情」里操作（住户信息以房屋为锚点）。</p>
+</div>
+{% endif %}
+{% endblock %}

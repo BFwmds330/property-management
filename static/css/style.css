@@ -1,0 +1,117 @@
+/* 物业管家（个人版）自定义样式：在 Bootstrap 之上做少量适配 */
+
+:root {
+  --app-green: #2e7d32;
+  --app-green-dark: #1b5e20;
+}
+
+body {
+  background: #f4f6f8;
+}
+
+.app-navbar {
+  background: linear-gradient(90deg, var(--app-green-dark), var(--app-green));
+}
+
+.app-container {
+  max-width: 1280px;
+}
+
+.main-body {
+  min-height: calc(100vh - 160px);
+}
+
+/* 顶部小区切换器 */
+.community-switch {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  margin-right: .5rem;
+}
+.community-select {
+  max-width: 210px;
+}
+
+/* 卡片 */
+.app-card {
+  border: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+  border-radius: .6rem;
+}
+.app-card .card-header {
+  background: #fff;
+  border-bottom: 1px solid #eee;
+  font-weight: 600;
+}
+
+/* 数字统计卡 */
+.stat-card .stat-num {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--app-green-dark);
+}
+.stat-card .stat-sub {
+  font-size: .8rem;
+  color: #888;
+}
+
+/* 表格 */
+.table thead th {
+  white-space: nowrap;
+  font-weight: 600;
+  color: #555;
+}
+.table td {
+  vertical-align: middle;
+}
+.owed-red {
+  color: #d32f2f;
+  font-weight: 700;
+}
+.table-sm-fixed td, .table-sm-fixed th {
+  padding: .45rem .5rem;
+}
+
+/* 页面标题行 */
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.page-head h5 {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* 手机端适配：导航外的表格允许横向滚动，页面不溢出 */
+@media (max-width: 768px) {
+  .stat-card .stat-num { font-size: 1.25rem; }
+  .page-head h5 { font-size: 1.05rem; }
+  .community-select { max-width: 150px; }
+}
+
+.form-label .req { color: #d32f2f; margin-left: 2px; }
+.form-text-hint { font-size: .8rem; color: #999; }
+
+.badge-role-owner { background: #2e7d32; }
+.badge-role-member { background: #1976d2; }
+.badge-role-tenant { background: #f57c00; }
+
+.timeline { list-style: none; padding-left: 0; }
+.timeline li {
+  position: relative;
+  padding: 0 0 .8rem 1.4rem;
+  border-left: 2px solid #c8e6c9;
+  margin-left: .5rem;
+}
+.timeline li::before {
+  content: "";
+  position: absolute;
+  left: -7px; top: 3px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--app-green);
+}

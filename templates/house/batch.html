@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}批量生成房屋 - 物业管家{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="alert alert-info small">
+      填好楼栋、单元数、层数和每层户数，点一次就能生成整栋楼的全部房屋（例如 2 单元 × 6 层 × 每层 2 户 = 24 套，
+      房号自动编为 <b>101、102…601、602</b>）。已存在的房屋会自动跳过，不会重复。
+    </div>
+    <div class="card app-card">
+      <div class="card-header">⚡ 批量生成整栋房屋</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('house.house_batch_post') }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">选择楼栋 <span class="req">＊</span></label>
+              <select class="form-select" name="building_id" required>
+                <option value="">请选择楼栋</option>
+                {% for b in buildings %}
+                <option value="{{ b.id }}" {{ sel('building_id', b.id) }}>{{ b.code }}（{{ b.units }} 单元 / {{ b.floors }} 层）</option>
+                {% endfor %}
+              </select>
+              {% if not buildings %}<div class="form-text-hint">还没有楼栋，请先到「房屋 → 楼栋」添加</div>{% endif %}
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">单元数 <span class="req">＊</span></label>
+              <input class="form-control" type="number" name="units" min="1" max="20" required value="{{ v('units', 1) }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">层数 <span class="req">＊</span></label>
+              <input class="form-control" type="number" name="floors" min="1" max="99" required value="{{ v('floors') }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">每层户数 <span class="req">＊</span></label>
+              <input class="form-control" type="number" name="per_floor" min="1" max="9" required value="{{ v('per_floor', 2) }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">默认户型（可选）</label>
+              <select class="form-select" name="house_type_id">
+                <option value="">暂不绑定</option>
+                {% for t in types %}
+                <option value="{{ t.id }}" {{ sel('house_type_id', t.id) }}>{{ t.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">默认建筑面积（㎡，可选）</label>
+              <input class="form-control" type="number" step="0.01" min="0" name="area" value="{{ v('area') }}">
+              <div class="form-text-hint">填了它，生成的每套房屋都按这个面积计算物业费</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-success px-4" data-confirm-title="批量生成房屋"
+                    data-confirm="将按上面的设置批量生成房屋，已存在的自动跳过。确定开始吗？">开始生成</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('house.house_list') }}">取消</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card app-card mt-3">
+      <div class="card-header">💡 提示</div>
+      <div class="card-body small text-secondary">
+        <ol class="mb-0">
+          <li>先到「房屋 → 楼栋」把楼栋建好（编号、单元数、层数、有无电梯）。</li>
+          <li>回到这里一键生成整栋房屋。</li>
+          <li>生成后到房屋列表逐套绑定户型、面积、业主即可。</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

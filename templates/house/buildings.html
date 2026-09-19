@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}楼栋管理 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🏗 楼栋管理{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <a class="btn btn-success" href="{{ url_for('house.house_batch') }}">⚡ 批量生成房屋</a>
+</div>
+
+<div class="card app-card mb-3">
+  <div class="card-header">＋ 新增楼栋</div>
+  <div class="card-body">
+    <form class="row g-2 align-items-end" method="post" action="{{ url_for('building.building_add') }}">
+      <div class="col-6 col-md-2">
+        <label class="form-label small">楼栋编号 <span class="req">＊</span></label>
+        <input class="form-control form-control-sm" name="code" required maxlength="20" placeholder="如 1# 或 3">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">单元数 <span class="req">＊</span></label>
+        <input class="form-control form-control-sm" type="number" name="units" min="1" max="20" required value="1">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">地上层数 <span class="req">＊</span></label>
+        <input class="form-control form-control-sm" type="number" name="floors" min="1" max="99" required>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small d-block">电梯</label>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="has_elevator" value="1" id="elev">
+          <label class="form-check-label small" for="elev">有电梯</label>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small">备注</label>
+        <input class="form-control form-control-sm" name="remark" maxlength="200">
+      </div>
+      <div class="col-6 col-md-2">
+        <button class="btn btn-success btn-sm w-100">添加楼栋</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card app-card">
+  <div class="card-header">共 {{ rows | length }} 栋楼</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 table-sm-fixed align-middle">
+        <thead><tr><th>编号</th><th>单元数</th><th>层数</th><th>电梯</th><th>房屋数</th><th>备注</th><th>操作</th></tr></thead>
+        <tbody>
+          {% for b in rows %}
+          <tr>
+            <td class="fw-bold">{{ b.code }}</td>
+            <td>{{ b.units }}</td>
+            <td>{{ b.floors }}</td>
+            <td>{{ '有' if b.has_elevator else '无' }}</td>
+            <td>{{ b.house_count }}</td>
+            <td class="small text-secondary">{{ b.remark }}</td>
+            <td class="text-nowrap">
+              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editBuilding{{ b.id }}">编辑</button>
+              <a class="btn btn-sm btn-outline-success" href="{{ url_for('house.house_list', building_id=b.id) }}">看房屋</a>
+              <form class="d-inline" method="post" action="{{ url_for('building.building_delete', bid=b.id) }}"
+                    data-confirm-title="删除楼栋「{{ b.code }}」"
+                    data-confirm="删除楼栋会<b class='text-danger'>连同它的 {{ b.house_count }} 套房屋、住户登记和账单一并删除</b>，且无法恢复！<br><br>建议先备份数据。确定删除吗？">
+                <button class="btn btn-sm btn-outline-danger">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-secondary py-4">还没有楼栋，用上方表单添加第一个楼栋</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑楼栋弹窗 -->
+{% for b in rows %}
+<div class="modal fade" id="editBuilding{{ b.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('building.building_edit', bid=b.id) }}">
+        <div class="modal-header"><h5 class="modal-title">编辑楼栋 {{ b.code }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-6"><label class="form-label">楼栋编号</label>
+              <input class="form-control" name="code" value="{{ b.code }}" required maxlength="20"></div>
+            <div class="col-6"><label class="form-label">单元数</label>
+              <input class="form-control" type="number" name="units" min="1" max="20" value="{{ b.units }}" required></div>
+            <div class="col-6"><label class="form-label">地上层数</label>
+              <input class="form-control" type="number" name="floors" min="1" max="99" value="{{ b.floors }}" required></div>
+            <div class="col-6"><label class="form-label d-block">电梯</label>
+              <div class="form-check"><input class="form-check-input" type="checkbox" name="has_elevator" value="1" id="e{{ b.id }}" {% if b.has_elevator %}checked{% endif %}>
+                <label class="form-check-label" for="e{{ b.id }}">有电梯</label></div></div>
+            <div class="col-12"><label class="form-label">备注</label>
+              <input class="form-control" name="remark" value="{{ b.remark }}" maxlength="200"></div>
+          </div>
+          <div class="form-text">已有房屋的单元/楼层不能超出新范围。</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-success">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

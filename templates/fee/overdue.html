@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}欠费管理 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🚨 欠费管理{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-success" href="{{ url_for('fee.overdue_export') }}">⬇ 导出催缴名单</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('fee.bill_list', status='unpaid') }}">查看账单</a>
+  </div>
+</div>
+
+<div class="card app-card mb-3"><div class="card-body py-2">
+  <form class="row g-2 align-items-end">
+    <div class="col-6 col-md-3">
+      <label class="form-label small mb-1">楼栋</label>
+      <select class="form-select form-select-sm" name="building_id">
+        <option value="">全部楼栋</option>
+        {% for b in buildings %}
+        <option value="{{ b.id }}" {{ sel('building_id', b.id, f_building) }}>{{ b.code }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small mb-1">房号 / 业主</label>
+      <input class="form-control form-control-sm" name="keyword" value="{{ f_keyword }}" placeholder="如 1501 或 张三">
+    </div>
+    <div class="col-6 col-md-2 d-flex gap-1">
+      <button class="btn btn-sm btn-success flex-grow-1">筛选</button>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('fee.overdue') }}">重置</a>
+    </div>
+  </form>
+</div></div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3"><div class="card app-card stat-card"><div class="card-body">
+    <span class="text-secondary small">欠费笔数</span>
+    <div class="stat-num text-danger">{{ rows | length }}</div>
+  </div></div></div>
+  <div class="col-6 col-md-3"><div class="card app-card stat-card"><div class="card-body">
+    <span class="text-secondary small">欠费总额</span>
+    <div class="stat-num text-danger">¥{{ total | money }}</div>
+  </div></div></div>
+</div>
+
+<div class="card app-card">
+  <div class="card-header">欠费清单（按房号排列）</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm-fixed mb-0 align-middle">
+        <thead><tr>
+          <th>房号</th><th>业主</th><th>项目</th><th>账期</th>
+          <th class="text-end">欠费(元)</th><th>欠费月数</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="fw-bold">{{ r.house_label }}</td>
+            <td>{{ r.owner_name or '—' }}{% if r.owner_phone %}<div class="small text-secondary">{{ r.owner_phone }}</div>{% endif %}</td>
+            <td>{{ r.item_name }}</td>
+            <td>{{ r.period }}</td>
+            <td class="text-end owed-red">{{ r.owed_fen | money }}</td>
+            <td>{% if r.months %}{{ r.months }} 个月{% else %}—{% endif %}</td>
+            <td class="text-nowrap">
+              <button class="btn btn-sm btn-outline-primary" data-house-id="{{ r.house_id }}">📨 催缴短信</button>
+              <a class="btn btn-sm btn-outline-success" href="{{ url_for('fee.payall_form', hid=r.house_id) }}">收款</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-success py-4">🎉 太棒了，当前没有任何欠费！</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
