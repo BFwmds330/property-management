@@ -19,7 +19,8 @@ from config import (BASE_DIR, DATA_DIR, DEFAULT_PORT, EDITION, MAX_CONTENT_LENGT
                     VERSION, ensure_dirs)
 from utils import (BILL_STATUS, BILL_STATUS_COLOR, CYCLE_NAME, HOUSE_STATUS,
                    HOUSE_STATUS_COLOR, PAY_METHODS, PRICING_NAME, RELATIONS,
-                   REPAIR_STATUS, REPAIR_STATUS_COLOR, ROLE, fmt_area, fmt_money,
+                   REPAIR_STATUS, REPAIR_STATUS_COLOR, ROLE, STAFF_STATUS,
+                   STAFF_STATUS_COLOR, age_from_birth, fmt_area, fmt_money,
                    today_str)
 
 
@@ -102,14 +103,16 @@ def create_app():
     from routes.fee import fee_bp
     from routes.report import report_bp
     from routes.repair import repair_bp
+    from routes.staff import staff_bp
     from routes.system import system_bp
     for bp in (main_bp, community_bp, house_bp, building_bp, htype_bp,
-               resident_bp, fee_bp, report_bp, repair_bp, system_bp):
+               resident_bp, fee_bp, report_bp, repair_bp, staff_bp, system_bp):
         app.register_blueprint(bp)
 
     # ------------------------------------------------ 模板辅助函数 / 过滤器
     app.jinja_env.filters["money"] = fmt_money
     app.jinja_env.filters["area"] = fmt_area
+    app.jinja_env.filters["age"] = age_from_birth
 
     @app.context_processor
     def inject_globals():
@@ -136,6 +139,7 @@ def create_app():
             ROLE=ROLE, RELATIONS=RELATIONS, PAY_METHODS=PAY_METHODS,
             CYCLE_NAME=CYCLE_NAME, PRICING_NAME=PRICING_NAME,
             REPAIR_STATUS=REPAIR_STATUS, REPAIR_STATUS_COLOR=REPAIR_STATUS_COLOR,
+            STAFF_STATUS=STAFF_STATUS, STAFF_STATUS_COLOR=STAFF_STATUS_COLOR,
             money=fmt_money, area_fmt=fmt_area, today=today_str(),
         )
 

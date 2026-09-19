@@ -43,7 +43,7 @@
 
 <!-- 待办提醒 -->
 <div class="row g-3 mt-1">
-  <div class="col-md-4">
+  <div class="col-md-6 col-xl-3">
     <div class="card app-card h-100">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>💰 本月待收</span>
@@ -56,7 +56,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-6 col-xl-3">
     <div class="card app-card h-100">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>🔑 30 天内到期租约</span>
@@ -74,7 +74,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-6 col-xl-3">
     <div class="card app-card h-100">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>🎂 近期生日 · 🔧 待办报修</span>
@@ -94,6 +94,42 @@
         {% endif %}
         {% if not data.birthdays and not data.repairs %}
           <p class="text-secondary small mb-0">最近没有生日提醒，也没有待办报修</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card app-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>👔 人员 · 本月台账</span>
+        <a class="small" href="{{ url_for('staff.staff_list') }}">去人员</a>
+      </div>
+      <div class="card-body py-2">
+        {% if data.staff_active %}
+          <div class="d-flex justify-content-between border-bottom py-1 small">
+            <span>在职 {{ data.staff_active }} 人 · 本月工资</span>
+            {% if data.salary_month_done %}
+              <span class="text-success">已录 {{ data.salary_month_done }} 条</span>
+            {% else %}
+              <a class="text-danger fw-bold" href="{{ url_for('staff.salary_batch', year=data.month[:4], month=data.month[5:7]) }}">未录入 →</a>
+            {% endif %}
+          </div>
+          <div class="d-flex justify-content-between border-bottom py-1 small">
+            <span>本月社保</span>
+            {% if data.social_month_done %}
+              <span class="text-success">已录 {{ data.social_month_done }} 条</span>
+            {% else %}
+              <a class="text-danger fw-bold" href="{{ url_for('staff.social_batch', year=data.month[:4], month=data.month[5:7]) }}">未录入 →</a>
+            {% endif %}
+          </div>
+          {% for cst in data.contracts %}
+          <div class="d-flex justify-content-between border-bottom py-1 small">
+            <span>📄 {{ cst.name }}（{{ cst.department }}）合同</span>
+            <span class="text-warning-emphasis fw-bold">{{ cst.contract_end }} 到期</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-secondary small mb-0">还没有员工档案，到「人员」页建立</p>
         {% endif %}
       </div>
     </div>

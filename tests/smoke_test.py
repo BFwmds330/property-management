@@ -388,6 +388,12 @@ def main():
         ("POST", "/settings/demo/load", {}),      # 已清空后可再次载入，不算错；这里主要验证不崩
         ("POST", "/repair/add", {"content": ""}),
         ("GET", "/不存在的页面", None),
+        ("POST", "/staff/add", {"name": "超" * 100}),
+        ("GET", "/staff/99999", None),
+        ("GET", "/staff/report?year=abc", None),
+        ("GET", "/staff/salary?year=xxx&month=99", None),
+        ("POST", "/staff/salary/save", {"year": "xx", "month": "1"}),
+        ("GET", "/staff/social?year=abc", None),
     ]
     ok = True
     for method, url, data in fuzz_cases:
@@ -506,10 +512,130 @@ def main():
     check("车辆卡片显示停车费缴纳情况", "2026.1-2026.12" in html2 and "缴至" in html2)
     check("显示缴至月份", "2026-12" in html2)
 
+    # ============ 17. 人员管理模块 ============
+    from services import staff_service as staff_service_import
+    print("\n== 人员管理：员工档案 ==")
+    id17s = "11010119850505123"
+    good_id_staff = id17s + __import__("sys").modules["utils"].idcard_check_digit(id17s)
+    r = c2.post("/staff/add", data={
+        "name": "员测试", "gender": "男", "birth_date": "1985-05-05", "id_number": good_id_staff,
+        "phone": "13800009901", "department": "秩序", "position": "保安队长",
+        "community_id": "1", "hire_date": "2024-03-01", "leave_date": "",
+        "status": "active", "contract_end": "2026-12-31", "cert_name": "", "cert_end": "",
+        "emergency_name": "急联系人", "emergency_phone": "13800009902", "address": "", "remark": ""},
+        follow_redirects=True)
+    check("新增员工", "员测试".encode() in r.data)
+    sid_staff = db_rows("SELECT id FROM staff WHERE name='员测试'")[0]["id"]
+    r = c2.get("/staff/%d" % sid_staff)
+    check("员工详情显示年龄（自动计算）", "41 岁".encode() in r.data or "40 岁".encode() in r.data)
+    r = c2.post("/staff/add", data={"name": "坏证件员工", "id_number": "11010119900101123X"},
+                follow_redirects=False)
+    check("身份证校验位错误被拦截", r.status_code == 302)
+    r = c2.post("/staff/%d/edit" % sid_staff, data={
+        "name": "员测试", "gender": "男", "birth_date": "1985-05-05", "id_number": good_id_staff,
+        "phone": "13800009901", "department": "秩序", "position": "保安队长", "community_id": "1",
+        "hire_date": "2024-03-01", "leave_date": "2020-01-01", "status": "active"},
+        follow_redirects=False)
+    check("离职日期早于入职日期被拦截", r.status_code == 302)
+
+    print("\n== 人员管理：社保与工资批量录入 ==")
+    # 先录 2026 年 1 月社保（个人养老 8000 分 + 个人医疗 2000 分 = 100 元）
+    c2.get("/staff/social?year=2026&month=1")
+    r = c2.post("/staff/social/save", data={
+        "year": "2026", "month": "1", "staff_ids": [str(sid_staff)],
+        "base_%d" % sid_staff: "4000.00",
+        "co_pension_%d" % sid_staff: "640.00", "co_medical_%d" % sid_staff: "320.00",
+        "co_unemployment_%d" % sid_staff: "20.00", "co_injury_%d" % sid_staff: "16.00",
+        "co_maternity_%d" % sid_staff: "16.00", "co_fund_%d" % sid_staff: "400.00",
+        "personal_pension_%d" % sid_staff: "80.00", "personal_medical_%d" % sid_staff: "20.00",
+        "personal_unemployment_%d" % sid_staff: "", "personal_fund_%d" % sid_staff: "200.00",
+        "remark_%d" % sid_staff: ""}, follow_redirects=True)
+    soc = db_rows("SELECT * FROM staff_social WHERE staff_id=?", (sid_staff,))[0]
+    check("社保批量录入成功", soc["base"] == 400000 and soc["co_pension"] == 64000)
+    # 工资批量录入：社保个人代扣应自动带出 100 元（80+20+0）
+    r = c2.get("/staff/salary?year=2026&month=1")
+    check("工资录入页自动带出社保个人代扣", b"100.00" in r.data)
+    r = c2.post("/staff/salary/save", data={
+        "year": "2026", "month": "1", "staff_ids": [str(sid_staff)],
+        "base_%d" % sid_staff: "3000.00", "allowance_%d" % sid_staff: "500.00",
+        "overtime_%d" % sid_staff: "200.00", "subsidy_%d" % sid_staff: "100.00",
+        "social_deduct_%d" % sid_staff: "100.00", "social_auto_%d" % sid_staff: "100.00",
+        "tax_%d" % sid_staff: "30.00", "other_deduct_%d" % sid_staff: "20.00",
+        "pay_date_%d" % sid_staff: "2026-02-10", "method_%d" % sid_staff: "转账",
+        "remark_%d" % sid_staff: ""}, follow_redirects=True)
+    sal = db_rows("SELECT * FROM staff_salary WHERE staff_id=?", (sid_staff,))[0]
+    gross = sal["base"] + sal["allowance"] + sal["overtime"] + sal["subsidy"]
+    net = gross - sal["social_deduct"] - sal["tax"] - sal["other_deduct"]
+    check("工资应发自动计算（3800 元）", gross == 380000, str(gross))
+    check("工资实发自动计算（3650 元）", net == 365000, str(net))
+    # 社保代扣覆盖必须填原因
+    r = c2.post("/staff/salary/save", data={
+        "year": "2026", "month": "1", "staff_ids": [str(sid_staff)],
+        "base_%d" % sid_staff: "3000.00", "social_deduct_%d" % sid_staff: "50.00",
+        "social_auto_%d" % sid_staff: "100.00", "override_reason_%d" % sid_staff: "",
+        "tax_%d" % sid_staff: "", "other_deduct_%d" % sid_staff: ""}, follow_redirects=False)
+    check("社保代扣覆盖不填原因被拦截", r.status_code == 302)
+    # 重复保存 = 覆盖更新，不产生重复记录
+    r = c2.post("/staff/salary/save", data={
+        "year": "2026", "month": "1", "staff_ids": [str(sid_staff)],
+        "base_%d" % sid_staff: "3000.00", "social_deduct_%d" % sid_staff: "50.00",
+        "social_auto_%d" % sid_staff: "100.00", "override_reason_%d" % sid_staff: "离职折算",
+        "tax_%d" % sid_staff: "", "other_deduct_%d" % sid_staff: ""}, follow_redirects=True)
+    n_sal = db_rows("SELECT COUNT(*) AS n FROM staff_salary WHERE staff_id=?", (sid_staff,))[0]["n"]
+    check("同月重复保存只保留一条", n_sal == 1, str(n_sal))
+    check("覆盖原因已留痕", db_rows("SELECT override_reason FROM staff_salary WHERE staff_id=?",
+                                    (sid_staff,))[0]["override_reason"] == "离职折算")
+
+    print("\n== 人员管理：报表与导出 ==")
+    r = c2.get("/staff/report?year=2026")
+    check("人力成本报表可打开", r.status_code == 200 and "人力成本合计".encode() in r.data)
+    # 手工核算：1 月成本 = 实发 3650（覆盖后 3000-50）+ 单位社保 1012 + 公积金 400
+    expected_cost = (300000 - 5000) + (64000 + 32000 + 2000 + 1600 + 1600) + 40000
+    got = db_rows("""SELECT COALESCE(SUM(sal.base + sal.allowance + sal.overtime + sal.subsidy
+        - sal.social_deduct - sal.tax - sal.other_deduct),0) AS net FROM staff_salary sal
+        WHERE sal.year=2026""")[0]["net"]
+    soc = db_rows("""SELECT COALESCE(SUM(co_pension+co_medical+co_unemployment+co_injury+co_maternity),0) AS s,
+        COALESCE(SUM(co_fund),0) AS f FROM staff_social sc WHERE sc.year=2026""")[0]
+    check("年度人力成本与手工核算一致", got + soc["s"] + soc["f"] == expected_cost,
+          "库 %d / 算 %d" % (got + soc["s"] + soc["f"], expected_cost))
+    r = c2.get("/staff/report/salary.csv?year=2026")
+    check("年度工资表 CSV 可导出", r.status_code == 200 and r.data.startswith(b"\xef\xbb\xbf"))
+    r = c2.get("/staff/report/social.csv?year=2026")
+    check("社保汇总 CSV 可导出", r.status_code == 200)
+
+    print("\n== 人员管理：档案导入与删除保护 ==")
+    staff_csv = ("姓名,性别,出生日期,身份证号,手机号,部门,职位,工作小区,入职日期,合同到期,紧急联系人,紧急电话,现居住址,备注\n"
+                 "员演示,女,1992-02-02,%s,13800009905,保洁,保洁员,阳光花园,2025-01-01,,,,,演示\n"
+                 "坏号码员工,男,,,123,客服,,,,,,,,\n" % good_id_staff).encode("gbk")
+    r = c2.post("/staff/import/preview", data={"file": (io.BytesIO(staff_csv), "员工.csv")},
+                content_type="multipart/form-data")
+    check("员工导入预览（坏行被拦截）", "必须全部修正".encode() in r.data)
+    rows_staff = staff_service_import.read_staff_csv(
+        ("姓名,性别,出生日期,身份证号,手机号,部门,职位,工作小区,入职日期,合同到期,紧急联系人,紧急电话,现居住址,备注\n"
+         "员演示,女,1992-02-02,%s,13800009905,保洁,保洁员,阳光花园,2025-01-01,,,,,演示\n" % good_id_staff).encode("utf-8-sig"))
+    payload = _json.dumps(rows_staff, ensure_ascii=False)
+    r = c2.post("/staff/import/confirm", data={"payload": payload}, follow_redirects=True)
+    check("员工档案导入成功", "导入完成".encode() in r.data)
+    r = c2.get("/staff?keyword=员演示")
+    check("导入的员工可搜索", "员演示".encode() in r.data)
+    r = c2.post("/staff/%d/delete" % sid_staff, follow_redirects=False)
+    check("有工资记录的员工删除被拦截", r.status_code == 302)
+    # 离职员工不出现在批量录入
+    c2.post("/staff/%d/edit" % sid_staff, data={
+        "name": "员测试", "gender": "男", "birth_date": "1985-05-05", "id_number": good_id_staff,
+        "phone": "13800009901", "department": "秩序", "position": "保安队长", "community_id": "1",
+        "hire_date": "2024-03-01", "leave_date": "2026-09-01", "status": "left",
+        "contract_end": "", "cert_name": "", "cert_end": "", "emergency_name": "",
+        "emergency_phone": "", "address": "", "remark": ""}, follow_redirects=True)
+    r = c2.get("/staff/salary?year=2026&month=1")
+    check("离职员工不出现在批量录入名单", "员测试".encode() not in r.data)
+
     # ============ 16. 所有页面可访问 ============
     print("\n== 所有页面可访问 ==")
     pages = ["/", "/community/list", "/community/add", "/house", "/house/add", "/house/batch",
-             "/house/import", "/building", "/house-type", "/resident", "/resident/add?house_id=%d&role=member" % hid_main,
+             "/house/import", "/building", "/house-type", "/resident",
+             "/staff", "/staff/add", "/staff/salary", "/staff/social", "/staff/report",
+             "/staff/import", "/staff/%d" % sid_staff, "/staff/%d/edit" % sid_staff, "/resident/add?house_id=%d&role=member" % hid_main,
              "/fee/items", "/fee/bills", "/fee/generate", "/fee/overdue", "/fee/payments",
              "/report", "/repair", "/settings", "/house/%d" % hid_main,
              "/house/%d/edit" % hid_main, "/fee/house/%d/payall" % hid_main,

@@ -52,6 +52,17 @@ def dashboard(db, community_id):
     # 待办：未处理报修
     repairs = scalar(db, "SELECT COUNT(*) FROM repair WHERE community_id=? AND status IN ('pending','processing')",
                      (community_id,))
+    # 人员模块：在职人数、本月工资/社保是否已录入、30 天内合同到期
+    staff_active = scalar(db, "SELECT COUNT(*) FROM staff WHERE status IN ('active','probation')")
+    salary_month_done = scalar(db, "SELECT COUNT(*) FROM staff_salary WHERE year=? AND month=?",
+                               (int(month[:4]), int(month[5:7])))
+    social_month_done = scalar(db, "SELECT COUNT(*) FROM staff_social WHERE year=? AND month=?",
+                               (int(month[:4]), int(month[5:7])))
+    contracts = [dict(r) for r in query_all(db, """
+        SELECT name, department, contract_end FROM staff
+        WHERE status IN ('active','probation') AND contract_end != ''
+          AND contract_end >= ? AND contract_end <= ?
+        ORDER BY contract_end""", (today.isoformat(), end.isoformat()))]
     return {
         "total_houses": total_houses, "occupied": occupied,
         "occupancy": round(occupied * 100 / total_houses) if total_houses else 0,
@@ -60,6 +71,8 @@ def dashboard(db, community_id):
         "owed_fen": owed["total"], "owed_houses": owed["houses"],
         "todo_bills": todo_bills, "leases": leases, "birthdays": birthdays, "repairs": repairs,
         "month": month,
+        "staff_active": staff_active, "salary_month_done": salary_month_done,
+        "social_month_done": social_month_done, "contracts": contracts,
     }
 
 
