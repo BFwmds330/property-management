@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑员工' if staff else '新增员工' }} - 物业管家{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="card app-card">
+      <div class="card-header">{{ '✏️ 编辑员工信息' if staff else '👔 新增员工' }}</div>
+      <div class="card-body">
+        <form method="post"
+              action="{{ url_for('staff.staff_edit_post', sid=staff.id) if staff else url_for('staff.staff_add_post') }}">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">姓名 <span class="req">＊</span></label>
+              <input class="form-control" name="name" required maxlength="50"
+                     value="{{ v('name', staff.name if staff else '') }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">性别</label>
+              <select class="form-select" name="gender">
+                <option value="" {{ sel('gender', '', staff.gender if staff else '') }}>未知</option>
+                <option value="男" {{ sel('gender', '男', staff.gender if staff else '') }}>男</option>
+                <option value="女" {{ sel('gender', '女', staff.gender if staff else '') }}>女</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">出生日期</label>
+              <input class="form-control" type="date" name="birth_date"
+                     value="{{ v('birth_date', staff.birth_date if staff else '') }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">身份证号</label>
+              <input class="form-control" name="id_number" maxlength="18"
+                     value="{{ v('id_number', staff.id_number if staff else '') }}" placeholder="18 位，可暂空">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">手机号</label>
+              <input class="form-control" name="phone" maxlength="20"
+                     value="{{ v('phone', staff.phone if staff else '') }}" placeholder="11 位，可暂空">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">部门</label>
+              <select class="form-select" name="department">
+                <option value="">未分类</option>
+                {% for dpt in departments %}
+                <option value="{{ dpt }}" {{ sel('department', dpt, staff.department if staff else '') }}>{{ dpt }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">职位</label>
+              <input class="form-control" name="position" maxlength="50"
+                     value="{{ v('position', staff.position if staff else '') }}" placeholder="如：保安队长">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">工作小区</label>
+              <select class="form-select" name="community_id">
+                <option value="">不指定</option>
+                {% for c in communities %}
+                <option value="{{ c.id }}" {{ sel('community_id', c.id, staff.community_id if staff else '') }}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text-hint">员工属于公司，小区只是工作地点</div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">入职日期</label>
+              <input class="form-control" type="date" name="hire_date"
+                     value="{{ v('hire_date', staff.hire_date if staff else '') }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">离职日期</label>
+              <input class="form-control" type="date" name="leave_date"
+                     value="{{ v('leave_date', staff.leave_date if staff else '') }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">在岗状态</label>
+              <select class="form-select" name="status">
+                {% for k, label in STAFF_STATUS.items() %}
+                <option value="{{ k }}" {{ sel('status', k, staff.status if staff else 'active') }}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">合同到期日</label>
+              <input class="form-control" type="date" name="contract_end"
+                     value="{{ v('contract_end', staff.contract_end if staff else '') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">证照名称（健康证等，选填）</label>
+              <input class="form-control" name="cert_name" maxlength="50"
+                     value="{{ v('cert_name', staff.cert_name if staff else '') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">证照到期日</label>
+              <input class="form-control" type="date" name="cert_end"
+                     value="{{ v('cert_end', staff.cert_end if staff else '') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">现居住址</label>
+              <input class="form-control" name="address" maxlength="200"
+                     value="{{ v('address', staff.address if staff else '') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">紧急联系人</label>
+              <input class="form-control" name="emergency_name" maxlength="50"
+                     value="{{ v('emergency_name', staff.emergency_name if staff else '') }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">紧急联系人电话</label>
+              <input class="form-control" name="emergency_phone" maxlength="20"
+                     value="{{ v('emergency_phone', staff.emergency_phone if staff else '') }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label">备注</label>
+              <textarea class="form-control" name="remark" rows="2" maxlength="300">{{ v('remark', staff.remark if staff else '') }}</textarea>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-success px-4">保存</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('staff.staff_detail', sid=staff.id) if staff else url_for('staff.staff_list') }}">取消</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

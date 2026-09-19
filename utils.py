@@ -270,6 +270,23 @@ REPAIR_STATUS_COLOR = {"pending": "danger", "processing": "warning", "done": "su
 CYCLE_NAME = {"month": "按月", "quarter": "按季", "year": "按年"}
 PRICING_NAME = {"area": "按建筑面积单价", "fixed": "按户固定金额"}
 
+STAFF_STATUS = {"active": "在职", "probation": "试用", "suspended": "停薪留职", "left": "离职"}
+STAFF_STATUS_COLOR = {"active": "success", "probation": "info", "suspended": "warning", "left": "secondary"}
+STAFF_DEPARTMENTS = ["管理", "客服", "秩序", "工程", "保洁", "其他"]
+
+
+def age_from_birth(birth_date):
+    """由出生日期算年龄；格式不合法返回 None。"""
+    if not birth_date or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", birth_date):
+        return None
+    try:
+        b = date.fromisoformat(birth_date)
+    except ValueError:
+        return None
+    today = date.today()
+    age = today.year - b.year - ((today.month, today.day) < (b.month, b.day))
+    return age if 0 <= age <= 150 else None
+
 
 # ---------------------------------------------------------------- CSV 导出
 

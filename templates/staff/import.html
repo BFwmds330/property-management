@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}导入员工档案 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>📥 导入员工档案</h5>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('staff.staff_list') }}">返回人员列表</a>
+</div>
+
+{% if stats is defined %}
+<div class="card app-card mb-3">
+  <div class="card-header">第 2 步：预览确认（共读到 {{ total_rows }} 行数据）</div>
+  <div class="card-body">
+    {% if errors %}
+    <div class="alert alert-danger">
+      <b>发现 {{ errors | length }} 个问题，必须全部修正后才能导入：</b>
+      <ul class="mb-0 small">
+        {% for e in errors[:20] %}<li>{{ e }}</li>{% endfor %}
+        {% if errors | length > 20 %}<li>…其余 {{ errors | length - 20 }} 条同理</li>{% endif %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="row g-3 mb-3">
+      <div class="col-4 col-md-4"><div class="stat-card"><span class="text-secondary small d-block">将新建员工</span><b class="text-success fs-5">{{ stats.new }} 人</b></div></div>
+      <div class="col-4 col-md-4"><div class="stat-card"><span class="text-secondary small d-block">更新已有员工</span><b class="fs-5">{{ stats.exist }} 人</b></div></div>
+      <div class="col-4 col-md-4"><div class="stat-card"><span class="text-secondary small d-block">有效数据行</span><b>{{ stats.valid }} 行</b></div></div>
+    </div>
+    <div class="table-responsive" style="max-height:300px">
+      <table class="table table-sm table-sm-fixed small mb-0">
+        <thead><tr><th>行号</th><th>姓名</th><th>部门 / 职位</th><th>手机号</th><th>工作小区</th><th>入职日期</th></tr></thead>
+        <tbody>
+          {% for r in records[:15] %}
+          <tr>
+            <td>{{ r.lineno }}</td>
+            <td class="fw-bold">{{ r.f.name }}</td>
+            <td>{{ r.f.department or '—' }}{% if r.f.position %} · {{ r.f.position }}{% endif %}</td>
+            <td>{{ r.f.phone or '—' }}</td>
+            <td>{{ r.community_name or '—' }}</td>
+            <td>{{ r.f.hire_date or '—' }}</td>
+          </tr>
+          {% endfor %}
+          {% if records | length > 15 %}<tr><td colspan="6" class="text-secondary">…其余 {{ records | length - 15 }} 行同理</td></tr>{% endif %}
+        </tbody>
+      </table>
+    </div>
+    <form method="post" action="{{ url_for('staff.staff_import_confirm') }}" class="mt-3 d-flex gap-2">
+      <input type="hidden" name="payload" value="{{ payload }}">
+      <button class="btn btn-success px-4"
+              data-confirm-title="确认导入"
+              data-confirm="将导入员工档案：新建 <b>{{ stats.new }}</b> 人、更新 <b>{{ stats.exist }}</b> 人。<br>已存在的员工只补空缺信息。确定开始吗？">✅ 确认导入</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('staff.staff_import_form') }}">重新上传</a>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card app-card">
+  <div class="card-header">第 1 步：下载模板并填写，然后上传</div>
+  <div class="card-body">
+    <ol class="small text-secondary">
+      <li>先 <a href="{{ url_for('staff.staff_import_template') }}"><b>下载员工档案模板</b></a>（CSV 文件，可用 Excel 打开编辑）。</li>
+      <li>姓名必填；部门填 客服/保洁/秩序/工程/管理/其他；工作小区按小区名称填写（需已创建）。</li>
+      <li>身份证号、手机号会自动校验；已存在的员工（按身份证或手机号识别）只补空缺、不覆盖已填信息。</li>
+      <li>工资和社保不在档案模板里，请在「人员 → 工资录入 / 社保录入」按月填写。</li>
+    </ol>
+    <form method="post" action="{{ url_for('staff.staff_import_preview') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+      <div class="col-md-6">
+        <input type="file" class="form-control" name="file" accept=".csv" required>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-success w-100">上传并预览</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

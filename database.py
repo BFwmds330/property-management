@@ -165,6 +165,77 @@ CREATE TABLE IF NOT EXISTS payment (
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS staff (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    gender          TEXT DEFAULT '',
+    birth_date      TEXT DEFAULT '',
+    id_number       TEXT DEFAULT '',
+    phone           TEXT DEFAULT '',
+    department      TEXT DEFAULT '',
+    position        TEXT DEFAULT '',
+    community_id    INTEGER REFERENCES community(id) ON DELETE SET NULL,
+    hire_date       TEXT DEFAULT '',
+    leave_date      TEXT DEFAULT '',
+    status          TEXT DEFAULT 'active',
+    contract_end    TEXT DEFAULT '',
+    cert_name       TEXT DEFAULT '',
+    cert_end        TEXT DEFAULT '',
+    emergency_name  TEXT DEFAULT '',
+    emergency_phone TEXT DEFAULT '',
+    address         TEXT DEFAULT '',
+    remark          TEXT DEFAULT '',
+    created_at      TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- 月度工资：每人每月一条；应发/实发为计算值不落库
+CREATE TABLE IF NOT EXISTS staff_salary (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    staff_id       INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+    year           INTEGER NOT NULL,
+    month          INTEGER NOT NULL,
+    base           INTEGER DEFAULT 0,
+    allowance      INTEGER DEFAULT 0,
+    overtime       INTEGER DEFAULT 0,
+    subsidy        INTEGER DEFAULT 0,
+    social_deduct  INTEGER DEFAULT 0,
+    social_auto    INTEGER DEFAULT 0,
+    override_reason TEXT DEFAULT '',
+    tax            INTEGER DEFAULT 0,
+    other_deduct   INTEGER DEFAULT 0,
+    pay_date       TEXT DEFAULT '',
+    method         TEXT DEFAULT '转账',
+    remark         TEXT DEFAULT '',
+    created_at     TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(staff_id, year, month)
+);
+
+-- 月度社保：每人每月一条；各险种允许 0（未参保），金额单位分
+CREATE TABLE IF NOT EXISTS staff_social (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    staff_id           INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+    year               INTEGER NOT NULL,
+    month              INTEGER NOT NULL,
+    base               INTEGER DEFAULT 0,
+    co_pension         INTEGER DEFAULT 0,
+    co_medical         INTEGER DEFAULT 0,
+    co_unemployment    INTEGER DEFAULT 0,
+    co_injury          INTEGER DEFAULT 0,
+    co_maternity       INTEGER DEFAULT 0,
+    co_fund            INTEGER DEFAULT 0,
+    personal_pension   INTEGER DEFAULT 0,
+    personal_medical   INTEGER DEFAULT 0,
+    personal_unemployment INTEGER DEFAULT 0,
+    personal_fund      INTEGER DEFAULT 0,
+    is_backpay         INTEGER DEFAULT 0,
+    remark             TEXT DEFAULT '',
+    created_at         TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(staff_id, year, month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_salary_staff ON staff_salary(staff_id);
+CREATE INDEX IF NOT EXISTS idx_social_staff ON staff_social(staff_id);
+
 CREATE TABLE IF NOT EXISTS repair (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     community_id  INTEGER NOT NULL REFERENCES community(id) ON DELETE CASCADE,

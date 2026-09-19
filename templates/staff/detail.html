@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ staff.name }} - 人员详情 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>👤 {{ staff.name }}
+    <span class="badge text-bg-{{ STAFF_STATUS_COLOR[staff.status] }}">{{ STAFF_STATUS[staff.status] }}</span>
+  </h5>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('staff.staff_list') }}">返回列表</a>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('staff.staff_edit', sid=staff.id) }}">✏️ 编辑</a>
+    {% if not salary_records and not social_records %}
+    <form class="d-inline" method="post" action="{{ url_for('staff.staff_delete', sid=staff.id) }}"
+          data-confirm-title="删除员工" data-confirm="确定删除员工 <b>{{ staff.name }}</b> 吗？该员工没有任何工资/社保记录。">
+      <button class="btn btn-outline-danger btn-sm">🗑 删除</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card app-card mb-3">
+  <div class="card-header">档案信息</div>
+  <div class="card-body">
+    <div class="row small g-2">
+      <div class="col-6 col-md-3"><span class="text-secondary">性别：</span>{{ staff.gender or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">出生日期：</span>
+        {{ staff.birth_date or '—' }}{% set age = staff.birth_date | age %}{% if age %}（{{ age }} 岁）{% endif %}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">身份证号：</span>{{ staff.id_number or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">手机号：</span>{{ staff.phone or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">部门：</span>{{ staff.department or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">职位：</span>{{ staff.position or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">工作小区：</span>{{ staff.community_name if staff.community_name else '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">入职日期：</span>{{ staff.hire_date or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">离职日期：</span>{{ staff.leave_date or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">合同到期：</span>{{ staff.contract_end or '—' }}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">证照：</span>
+        {% if staff.cert_name %}{{ staff.cert_name }}{% if staff.cert_end %}（{{ staff.cert_end }} 到期）{% endif %}{% else %}—{% endif %}</div>
+      <div class="col-6 col-md-3"><span class="text-secondary">紧急联系人：</span>
+        {% if staff.emergency_name %}{{ staff.emergency_name }}{% if staff.emergency_phone %}（{{ staff.emergency_phone }}）{% endif %}{% else %}—{% endif %}</div>
+      {% if staff.address %}<div class="col-12"><span class="text-secondary">现居住址：</span>{{ staff.address }}</div>{% endif %}
+      {% if staff.remark %}<div class="col-12"><span class="text-secondary">备注：</span>{{ staff.remark }}</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>💵 工资记录（{{ salary_records | length }} 条）</span>
+        <a class="small" href="{{ url_for('staff.salary_batch') }}">批量录入</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height:420px">
+          <table class="table table-hover mb-0 table-sm-fixed">
+            <thead><tr><th>月份</th><th class="text-end">应发(元)</th><th class="text-end">实发(元)</th><th>发放日期</th><th></th></tr></thead>
+            <tbody>
+              {% for r in salary_records %}
+              {% set gross = r.base + r.allowance + r.overtime + r.subsidy %}
+              {% set net = gross - r.social_deduct - r.tax - r.other_deduct %}
+              <tr>
+                <td>{{ r.year }} 年 {{ r.month }} 月</td>
+                <td class="text-end">{{ gross | money }}</td>
+                <td class="text-end fw-bold">{{ net | money }}</td>
+                <td>{{ r.pay_date or '—' }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('staff.salary_delete', salary_id=r.id) }}"
+                        data-confirm-title="删除工资记录"
+                        data-confirm="确定删除 {{ r.year }} 年 {{ r.month }} 月的工资记录吗？">
+                    <button class="btn btn-sm btn-outline-danger">删除</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-secondary py-3">还没有工资记录</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>🛡 社保缴纳记录（{{ social_records | length }} 条）</span>
+        <a class="small" href="{{ url_for('staff.social_batch') }}">批量录入</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height:420px">
+          <table class="table table-hover mb-0 table-sm-fixed">
+            <thead><tr><th>月份</th><th class="text-end">基数(元)</th><th class="text-end">单位合计(元)</th>
+              <th class="text-end">个人合计(元)</th><th></th></tr></thead>
+            <tbody>
+              {% for r in social_records %}
+              {% set co = r.co_pension + r.co_medical + r.co_unemployment + r.co_injury + r.co_maternity %}
+              {% set personal = r.personal_pension + r.personal_medical + r.personal_unemployment %}
+              <tr>
+                <td>{{ r.year }} 年 {{ r.month }} 月{% if r.is_backpay %}<span class="badge text-bg-warning ms-1">补缴</span>{% endif %}</td>
+                <td class="text-end">{{ r.base | money }}</td>
+                <td class="text-end">{{ (co + r.co_fund) | money }}</td>
+                <td class="text-end">{{ (personal + r.personal_fund) | money }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('staff.social_delete', social_id=r.id) }}"
+                        data-confirm-title="删除社保记录"
+                        data-confirm="确定删除 {{ r.year }} 年 {{ r.month }} 月的社保记录吗？">
+                    <button class="btn btn-sm btn-outline-danger">删除</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-secondary py-3">还没有社保记录</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

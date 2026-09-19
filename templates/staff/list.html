@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}人员管理 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>👔 人员管理（物业企业员工）</h5>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-success" href="{{ url_for('staff.salary_batch') }}">💵 工资录入</a>
+    <a class="btn btn-outline-success" href="{{ url_for('staff.social_batch') }}">🛡 社保录入</a>
+    <a class="btn btn-outline-success" href="{{ url_for('staff.staff_report') }}">📈 人力成本</a>
+    <a class="btn btn-success" href="{{ url_for('staff.staff_add') }}">＋ 新增员工</a>
+  </div>
+</div>
+
+<div class="card app-card mb-3"><div class="card-body py-2">
+  <form class="row g-2 align-items-end">
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">部门</label>
+      <select class="form-select form-select-sm" name="department">
+        <option value="">全部部门</option>
+        {% for dpt in departments %}
+        <option value="{{ dpt }}" {{ sel('department', dpt, f_department) }}>{{ dpt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">状态</label>
+      <select class="form-select form-select-sm" name="status">
+        <option value="">全部状态</option>
+        {% for k, label in STAFF_STATUS.items() %}
+        <option value="{{ k }}" {{ sel('status', k, f_status) }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">工作小区</label>
+      <select class="form-select form-select-sm" name="community_id">
+        <option value="">全部小区</option>
+        {% for c in communities %}
+        <option value="{{ c.id }}" {{ sel('community_id', c.id, f_community) }}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small mb-1">姓名 / 电话 / 职位</label>
+      <input class="form-control form-control-sm" name="keyword" value="{{ f_keyword }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="show_left" value="1" id="showLeft" {% if f_show_left %}checked{% endif %}>
+        <label class="form-check-label small" for="showLeft">显示离职员工</label>
+      </div>
+    </div>
+    <div class="col-6 col-md-1 d-flex gap-1">
+      <button class="btn btn-sm btn-success">筛选</button>
+    </div>
+  </form>
+</div></div>
+
+<div class="card app-card">
+  <div class="card-header d-flex justify-content-between">
+    <span>共 {{ rows | length }} 名员工</span>
+    <span>
+      <a class="small me-3" href="{{ url_for('staff.staff_import_form') }}">📥 导入员工档案</a>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm-fixed mb-0 align-middle">
+        <thead><tr>
+          <th>姓名</th><th>性别 / 年龄</th><th>部门</th><th>职位</th><th>工作小区</th>
+          <th>手机号</th><th>入职日期</th><th>状态</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          {% for s in rows %}
+          <tr>
+            <td class="fw-bold">{{ s.name }}</td>
+            <td>{{ s.gender or '—' }}
+              {% if s.birth_date %}{% set age = s.birth_date | age %}{% if age %}（{{ age }} 岁）{% endif %}{% endif %}</td>
+            <td>{{ s.department or '—' }}</td>
+            <td>{{ s.position or '—' }}</td>
+            <td>{{ s.community_name or '—' }}</td>
+            <td>{{ s.phone or '—' }}</td>
+            <td>{{ s.hire_date or '—' }}</td>
+            <td><span class="badge text-bg-{{ STAFF_STATUS_COLOR[s.status] }}">{{ STAFF_STATUS[s.status] }}</span></td>
+            <td class="text-nowrap">
+              <a class="btn btn-sm btn-outline-success" href="{{ url_for('staff.staff_detail', sid=s.id) }}">详情</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-secondary py-4">
+            还没有员工档案。点右上角“新增员工”建档，或用“导入员工档案”批量导入。
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
