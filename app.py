@@ -88,6 +88,8 @@ def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = _load_secret_key()
     app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+    # 名册导入的预览数据会以表单字段回传（600+ 户可达数 MB），放宽默认 500KB 限制
+    app.config["MAX_FORM_MEMORY_SIZE"] = 32 * 1024 * 1024
     app.config["SESSION_COOKIE_HTTPONLY"] = True
 
     # 每次请求结束后自动提交并关闭数据库连接

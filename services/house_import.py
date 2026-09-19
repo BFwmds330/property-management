@@ -104,18 +104,22 @@ def parse_rows(rows):
             rec["room_no"] = parse_int(row["房号"], "房号", 1, 9999)
             rec["area_100"] = parse_area(row["建筑面积"], "建筑面积") if row["建筑面积"] else 0
             rec["parking_no"] = clean_str(row["车位号"], "车位号", 50)
-            rec["owner"] = _person_group(row["业主姓名"], lineno, "业主")
-            if row["业主姓名"] and row["业主电话"]:
-                rec["owner"]["phone"] = parse_phone(row["业主电话"], "业主手机号")
+            if row["业主姓名"]:
+                rec["owner"] = _person_group(row["业主姓名"], lineno, "业主")
+                if row["业主电话"]:
+                    rec["owner"]["phone"] = parse_phone(row["业主电话"], "业主手机号")
             elif row["业主电话"]:
                 raise UserError("第 %d 行：填写了业主电话但没有业主姓名" % lineno)
-            rec["owner"]["id_number"] = (parse_idcard(row["业主证件号"], "业主证件号")
-                                         if row["业主证件号"] else "")
-            gender = (row["业主性别"] or "").strip()
-            if gender not in ("", "男", "女"):
-                raise UserError("第 %d 行：业主性别只能是 男 / 女 / 空" % lineno)
-            rec["owner"]["gender"] = gender
-            rec["owner"]["work_unit"] = clean_str(row["业主工作单位"], "业主工作单位", 100)
+            else:
+                rec["owner"] = None
+            if rec["owner"]:
+                rec["owner"]["id_number"] = (parse_idcard(row["业主证件号"], "业主证件号")
+                                             if row["业主证件号"] else "")
+                gender = (row["业主性别"] or "").strip()
+                if gender not in ("", "男", "女"):
+                    raise UserError("第 %d 行：业主性别只能是 男 / 女 / 空" % lineno)
+                rec["owner"]["gender"] = gender
+                rec["owner"]["work_unit"] = clean_str(row["业主工作单位"], "业主工作单位", 100)
             for g in _groups(row["家庭成员"]):
                 rec["members"].append(_person_group(g, lineno, "家庭成员"))
             for g in _groups(row["租户"]):
