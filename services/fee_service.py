@@ -151,11 +151,13 @@ def generate_bills(db, community_id, form, is_demo=0):
         raise UserError("没有需要生成的房屋（所选范围内都已生成过这个账期的账单）")
     fee_item = preview["fee_item"]
     for line in preview["lines"]:
-        db.execute(
+        cur = db.execute(
             """INSERT INTO bill (house_id, fee_item_id, period, period_start, months, amount_receivable)
                VALUES (?,?,?,?,?,?)""",
             (line["house"]["id"], fee_item["id"], preview["period"], preview["period_start"],
              preview["months"], line["amount_fen"]))
+        # 生成即按公式定状态：单价为 0（免收）时直接是已缴清，不产生"欠费 0 元"的杂音
+        _refresh_bill_status(db, cur.lastrowid)
     log_op(db, "收费", "生成账单",
            "「%s」账期 %s：生成 %d 笔账单，应收合计 %s 元"
            % (fee_item["name"], preview["period"], preview["count"], fmt_money(preview["total_fen"])), is_demo)
@@ -238,7 +240,10 @@ def _refresh_bill_status(db, bill_id):
     b = query_one(db, "SELECT amount_receivable, amount_received, status FROM bill WHERE id=?", (bill_id,))
     if not b or b["status"] == "void":
         return
-    if b["amount_received"] >= b["amount_receivable"] and b["amount_receivable"] > 0:
+    if b["amount_receivable"] <= 0:
+        # 应缴金额为 0：属于免收/减免到 0，账单视为已结清，不计入欠费名单
+        status = "paid"
+    elif b["amount_received"] >= b["amount_receivable"]:
         status = "paid"
     elif b["amount_received"] > 0:
         status = "partial"

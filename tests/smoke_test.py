@@ -262,6 +262,63 @@ def main():
     st = db_rows("SELECT status FROM bill WHERE id=?", (bill_v["id"],))[0]["status"]
     check("账单作废成功", st == "void")
 
+    # ============ 7.5 0 元账单（免收 / 减免到 0）状态判定 ============
+    print("\n== 0 元账单（免收）判定 ==")
+    from services import fee_service as _fee_service
+
+    def _overdue_ids(cid):
+        con_o = sqlite3.connect(config.DB_PATH)
+        con_o.row_factory = sqlite3.Row
+        try:
+            return {r["bill_id"] for r in _fee_service.overdue_rows(con_o, cid)}
+        finally:
+            con_o.close()
+
+    # ① 单价 0 元的收费项目：生成的账单应当就是「已缴清」，且不进欠费名单
+    c.post("/fee/items/add", data={"name": "免收测试费", "pricing_mode": "fixed",
+                                   "unit_price": "0", "cycle": "month"}, follow_redirects=True)
+    f0 = db_rows("SELECT id FROM fee_item WHERE name='免收测试费'")[0]["id"]
+    c.post("/fee/generate/confirm", data={"fee_item_id": str(f0), "period": CUR_MONTH,
+                                          "building_id": "0", "status_scope": "all"},
+           follow_redirects=True)
+    nh = db_rows("SELECT COUNT(*) AS n FROM house WHERE community_id=1")[0]["n"]
+    n0 = db_rows("SELECT COUNT(*) AS n FROM bill WHERE fee_item_id=?", (f0,))[0]["n"]
+    check("0 元收费项目可批量生成账单", n0 == nh, "生成 %d 笔 / 房屋 %d 套" % (n0, nh))
+    st0 = sorted({x["status"] for x in db_rows("SELECT status FROM bill WHERE fee_item_id=?", (f0,))})
+    check("0 元账单生成即为「已缴清」", st0 == ["paid"], str(st0))
+    zero_ids = {x["id"] for x in db_rows("SELECT id FROM bill WHERE fee_item_id=?", (f0,))}
+    owed0 = _overdue_ids(1)
+    check("0 元账单不进欠费名单", not (zero_ids & owed0), "交集 %d 笔" % len(zero_ids & owed0))
+
+    # ② 先有金额、后减免到 0：经「调整金额」重算后也应变成「已缴清」且不再欠费
+    hid_zero = db_rows("SELECT id FROM house WHERE community_id=1 AND room_no=102 LIMIT 1")[0]["id"]
+    con_z = sqlite3.connect(config.DB_PATH)
+    con_z.execute("""INSERT INTO bill (house_id, fee_item_id, period, period_start, months,
+                                       amount_receivable, amount_received)
+                     VALUES (?,?,'减免测试期','2020-01',12,10000,0)""", (hid_zero, f1))
+    con_z.commit()
+    b_adj = con_z.execute("SELECT id FROM bill WHERE house_id=? AND period='减免测试期'",
+                          (hid_zero,)).fetchone()[0]
+    con_z.close()
+    check("减免前该账单为「未缴」（前置条件）",
+          db_rows("SELECT status FROM bill WHERE id=?", (b_adj,))[0]["status"] == "unpaid")
+    c.post("/fee/bill/%d/adjust" % b_adj, data={"new_amount": "0.00", "reason": "业主免收物业费"},
+           follow_redirects=True)
+    st_b = db_rows("SELECT status, amount_receivable FROM bill WHERE id=?", (b_adj,))[0]
+    check("减免到 0 元后状态变为「已缴清」",
+          st_b["status"] == "paid" and st_b["amount_receivable"] == 0,
+          "status=%s 应收=%s" % (st_b["status"], st_b["amount_receivable"]))
+    check("减免到 0 后不再计入欠费", b_adj not in _overdue_ids(1))
+
+    # ③ 回归：正金额且未收款，经同样的重算路径仍应判「未缴」
+    b_reg = db_rows("""SELECT id, amount_receivable FROM bill
+                       WHERE fee_item_id=? AND status='unpaid' LIMIT 1""", (f1,))[0]
+    c.post("/fee/bill/%d/adjust" % b_reg["id"],
+           data={"new_amount": "%.2f" % (b_reg["amount_receivable"] / 100.0), "reason": "回归校验"},
+           follow_redirects=True)
+    st_r = db_rows("SELECT status FROM bill WHERE id=?", (b_reg["id"],))[0]["status"]
+    check("正金额未收款账单仍判「未缴」（回归）", st_r == "unpaid", st_r)
+
     # ============ 8. 欠费清单与报表数字核算 ============
     print("\n== 欠费清单与报表核算 ==")
     # 20 套×22000（100㎡×2.2）+ 新增 1 套 26400（120㎡×2.2）+ 21 套公摊×1500
