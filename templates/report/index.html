@@ -79,7 +79,7 @@
                 <td>{{ r.item_name }}</td>
                 <td class="text-end">{{ r.recv | money }}</td>
                 <td class="text-end">{{ r.got | money }}</td>
-                <td class="text-end">{{ (r.got * 100 / r.recv) | round | int }}%</td>
+                <td class="text-end">{% if r.recv %}{{ (r.got * 100 / r.recv) | round | int }}%{% else %}—{% endif %}</td>
                 <td class="text-end">{{ r.cnt }}</td>
               </tr>
               {% else %}
