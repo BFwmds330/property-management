@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 import socket
+import sqlite3
 import threading
 import webbrowser
 
@@ -194,8 +195,15 @@ def create_app():
 
     @app.before_request
     def require_startup_pin():
-        """启动密码拦截：未通过验证前，除验证页与静态资源外一律跳到验证页。"""
-        if not app.config.get("STARTUP_PIN"):
+        """启动密码拦截（v2.4.0）：
+        - 设置页启用的持久密码（存 app_meta 哈希）优先，运行中启用/关闭立即生效；
+        - 未设置持久密码时，回退到环境变量 WUYE_PIN 的会话密码；
+        - 通过验证后 session 记 pin_ok，本会话（关闭浏览器前）不再询问。
+        """
+        from services import system_service
+        stored = system_service.get_pin_hash(database.get_db())
+        session_pin = app.config.get("STARTUP_PIN")
+        if not stored and not session_pin:
             return None
         if session.get("pin_ok"):
             return None
@@ -206,9 +214,11 @@ def create_app():
 
     @app.route("/pin", methods=["GET", "POST"])
     def pin_page():
-        """启动密码验证页（仅当本次启动启用了 WUYE_PIN 时可达）。"""
-        pin = app.config.get("STARTUP_PIN")
-        if not pin:
+        """启动密码验证页（持久密码或 WUYE_PIN 会话密码启用时可达）。"""
+        from services import system_service
+        stored = system_service.get_pin_hash(database.get_db())
+        session_pin = app.config.get("STARTUP_PIN")
+        if not stored and not session_pin:
             return redirect(url_for("main.dashboard"))
         nxt = request.values.get("next") or url_for("main.dashboard")
         # 只允许站内相对路径，防止跳到外部网址
@@ -217,7 +227,11 @@ def create_app():
         error = ""
         if request.method == "POST":
             code = (request.form.get("code") or "").strip()
-            if code == pin:
+            if stored:
+                ok = system_service.verify_pin_value(code, stored)
+            else:
+                ok = (code == session_pin)
+            if ok:
                 session["pin_ok"] = True
                 return redirect(nxt)
             error = "密码不正确，请重新输入"
@@ -291,10 +305,23 @@ def main():
         print("  （当前仅本机可访问。手机要看？关闭本窗口后运行「手机访问.bat」，")
         print("   或设置环境变量 WUYE_LAN=1 再启动。）")
     pin = app.config.get("STARTUP_PIN")
-    if pin:
+    stored_pin = ""
+    try:
+        _db = database.open_db()
+        try:
+            _row = _db.execute("SELECT value FROM app_meta WHERE key='startup_pin_hash'").fetchone()
+        finally:
+            _db.close()
+        stored_pin = (_row[0] or "") if _row else ""
+    except sqlite3.Error:
+        stored_pin = ""
+    if stored_pin:
+        print("  🔐 启动密码已开启：打开系统需输入 4 位数字密码")
+        print("     （可在系统「设置 → 启动密码」里更改或关闭）")
+    elif pin:
         print("  🔐 启动密码已开启：本系统的访问密码是 %s" % pin)
         if (os.environ.get("WUYE_PIN") or "").strip() in ("1", "on", "yes", "ON", "random", "随机"):
-            print("     （随机密码，每次启动都会变化；用固定密码请设 WUYE_PIN=四个数字）")
+            print("     （随机密码，每次启动都会变化；建议改在系统「设置 → 启动密码」里设置固定密码）")
     print("  数据保存在：data 文件夹里，关闭本窗口即退出系统")
     print("=" * 56)
 

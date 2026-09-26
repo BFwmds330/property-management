@@ -3,27 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>访问验证 - 物业管家</title>
+  <title>访问验证 - 物业管家{% if edition %}（{{ edition }}）{% endif %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🏠</text></svg>">
+  <style>
+    .pin-navbar {
+      background: linear-gradient(90deg, var(--app-green-dark), var(--app-green));
+      padding: .6rem 0;
+    }
+  </style>
 </head>
-<body class="bg-light">
-<div class="container" style="max-width: 380px;">
+<body>
+
+<nav class="pin-navbar">
+  <div class="container" style="max-width: 1280px;">
+    <span class="navbar-brand fw-bold text-white mb-0">🏠 物业管家{% if edition %} <span class="badge rounded-pill text-bg-light">{{ edition }}</span>{% endif %}</span>
+  </div>
+</nav>
+
+<div class="container" style="max-width: 400px;">
   <div class="card app-card mt-5">
-    <div class="card-body p-4 text-center">
-      <h5 class="mb-1">🔐 物业管家{% if edition %}（{{ edition }}）{% endif %}</h5>
-      <p class="text-secondary small mb-4">本系统已开启访问密码，请输入启动窗口里显示的 4 位数字密码</p>
-      {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+    <div class="card-body p-4">
+      <h5 class="text-center mb-1">🔐 访问验证</h5>
+      <p class="text-secondary small text-center mb-4">本系统已开启启动密码，请输入 4 位数字密码进入</p>
+      {% if error %}<div class="alert alert-danger py-2 text-center">{{ error }}</div>{% endif %}
       <form method="post" action="{{ url_for('pin_page') }}">
         <input type="hidden" name="next" value="{{ next }}">
+        <label class="form-label small">启动密码 <span class="req">＊</span></label>
         <input class="form-control form-control-lg text-center mb-3" style="letter-spacing: 1em"
-               name="code" inputmode="numeric" pattern="\d{4}" maxlength="4"
+               type="password" name="code" inputmode="numeric" pattern="\d{4}" maxlength="4"
                placeholder="····" autofocus autocomplete="off" required>
         <button class="btn btn-success w-100">进入系统</button>
+        <div class="form-text-hint text-center mt-3">密码可在系统「设置 → 启动密码」中更改或关闭；忘记密码时，用启用密码之前的备份恢复即可进入</div>
       </form>
     </div>
   </div>
   <p class="text-center text-secondary small mt-3">v{{ version }}{% if edition %} · {{ edition }}{% endif %}</p>
 </div>
+
 </body>
 </html>
