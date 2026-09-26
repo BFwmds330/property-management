@@ -83,6 +83,60 @@
     </div>
   </div>
 
+  <!-- 启动密码 -->
+  <div class="col-lg-6">
+    <div class="card app-card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>🔐 启动密码</span>
+        {% if pin_enabled %}<span class="badge text-bg-success">已启用</span>
+        {% else %}<span class="badge text-bg-secondary">未启用</span>{% endif %}
+      </div>
+      <div class="card-body">
+        {% if pin_enabled %}
+        <p class="small text-secondary mb-2">
+          已开启：每次打开系统（或关闭浏览器后再打开）需先输入 4 位数字密码才能进入。
+          密码只以加密哈希保存，任何人（包括我们自己）都无法从数据文件里看到原密码——请牢记！
+        </p>
+        <form method="post" action="{{ url_for('system.pin_change') }}" class="row g-2">
+          <div class="col-12"><label class="form-label small mb-1">当前密码 <span class="req">＊</span></label>
+            <input class="form-control form-control-sm" type="password" inputmode="numeric" maxlength="4" name="old_pin" required></div>
+          <div class="col-6"><label class="form-label small mb-1">新密码（4 位数字） <span class="req">＊</span></label>
+            <input class="form-control form-control-sm" type="password" inputmode="numeric" maxlength="4" name="new_pin" required></div>
+          <div class="col-6"><label class="form-label small mb-1">再输一次 <span class="req">＊</span></label>
+            <input class="form-control form-control-sm" type="password" inputmode="numeric" maxlength="4" name="new_pin2" required></div>
+          <div class="col-12 d-flex gap-2">
+            <button class="btn btn-sm btn-success">保存新密码</button>
+          </div>
+        </form>
+        <hr class="my-3">
+        <form method="post" action="{{ url_for('system.pin_disable') }}" class="row g-2 align-items-end"
+              data-confirm-title="关闭启动密码"
+              data-confirm="关闭后，打开系统<b>不再需要密码</b>（局域网内任何人都能直接访问）。<br>确定关闭吗？">
+          <div class="col-6 col-md-4"><label class="form-label small mb-1">当前密码 <span class="req">＊</span></label>
+            <input class="form-control form-control-sm" type="password" inputmode="numeric" maxlength="4" name="old_pin" required></div>
+          <div class="col-6 col-md-4">
+            <button class="btn btn-sm btn-outline-danger">关闭启动密码</button>
+          </div>
+        </form>
+        {% else %}
+        <p class="small text-secondary mb-2">
+          开启后，每次打开系统需先输入 4 位数字密码才能进入（用手机访问时也一样）。
+          建议：使用「手机访问」模式或多人可接触电脑时开启。密码只以加密哈希保存，不会明文留在数据里。
+        </p>
+        <form method="post" action="{{ url_for('system.pin_enable') }}" class="row g-2">
+          <div class="col-6"><label class="form-label small mb-1">设置密码（4 位数字） <span class="req">＊</span></label>
+            <input class="form-control form-control-sm" type="password" inputmode="numeric" maxlength="4" name="pin" required></div>
+          <div class="col-6"><label class="form-label small mb-1">再输一次 <span class="req">＊</span></label>
+            <input class="form-control form-control-sm" type="password" inputmode="numeric" maxlength="4" name="pin2" required></div>
+          <div class="col-12">
+            <button class="btn btn-sm btn-success">启用启动密码</button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <!-- 系统信息 -->
   <div class="col-lg-6">
     <div class="card app-card h-100">

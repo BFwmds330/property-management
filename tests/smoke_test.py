@@ -951,6 +951,50 @@ def main():
     r = c2.get("/")
     check("总览页本月口径说明显示", "历史导入的跨年账单不计入本月".encode() in r.data)
 
+    # ============ 20. v2.4.0：设置页管理启动密码（启用/修改/关闭） ============
+    # 放在最后：启用持久密码会影响本 app 的所有客户端会话
+    print("\n== 设置页启动密码管理 ==")
+    r = c2.get("/settings")
+    check("设置页显示启动密码卡片（未启用）", "启动密码".encode() in r.data and "未启用".encode() in r.data)
+    r = c2.post("/settings/pin/enable", data={"pin": "12", "pin2": "12"}, follow_redirects=True)
+    check("非 4 位密码被拦截", "4 位数字".encode() in r.data)
+    r = c2.post("/settings/pin/enable", data={"pin": "1357", "pin2": "2468"}, follow_redirects=True)
+    check("两次输入不一致被拦截", "不一致".encode() in r.data)
+    r = c2.post("/settings/pin/enable", data={"pin": "1357", "pin2": "1357"}, follow_redirects=True)
+    check("启用启动密码成功", "启动密码已开启".encode() in r.data)
+    c_pin = app.test_client()
+    rr = c_pin.get("/", follow_redirects=False)
+    check("运行中启用立即生效（新会话被拦截）",
+          rr.status_code == 302 and "/pin" in rr.headers.get("Location", ""))
+    r = c2.post("/pin", data={"code": "1357", "next": "/"}, follow_redirects=True)
+    check("输入正确密码进入系统", r.status_code == 200 and "阳光花园".encode() in r.data)
+    stored_hash = db_rows("SELECT value FROM app_meta WHERE key='startup_pin_hash'")[0]["value"]
+    check("密码只存哈希（PBKDF2，不含明文）", "1357" not in stored_hash and "$" in stored_hash)
+    check("设置页状态变为已启用", "已启用".encode() in c2.get("/settings").data)
+    r = c2.post("/settings/pin/change", data={"old_pin": "9999", "new_pin": "2468", "new_pin2": "2468"},
+                follow_redirects=True)
+    check("旧密码错误时改密码被拦截", "当前密码不正确".encode() in r.data)
+    r = c2.post("/settings/pin/change", data={"old_pin": "1357", "new_pin": "2468", "new_pin2": "2468"},
+                follow_redirects=True)
+    check("修改密码成功", "启动密码已修改".encode() in r.data)
+    c3 = app.test_client()
+    r = c3.get("/", follow_redirects=False)
+    check("新会话被拦截到验证页", r.status_code == 302 and "/pin" in r.headers.get("Location", ""))
+    r = c3.post("/pin", data={"code": "2468", "next": "/"}, follow_redirects=True)
+    check("新密码可进入", r.status_code == 200)
+    c4 = app.test_client()
+    c4.get("/", follow_redirects=False)
+    r = c4.post("/pin", data={"code": "1357", "next": "/"}, follow_redirects=True)
+    check("旧密码已失效", "密码不正确".encode() in r.data)
+    r = c2.post("/settings/pin/disable", data={"old_pin": "1111"}, follow_redirects=True)
+    check("关闭密码时旧密码错误被拦截", "当前密码不正确".encode() in r.data)
+    r = c2.post("/settings/pin/disable", data={"old_pin": "2468"}, follow_redirects=True)
+    check("关闭启动密码成功", "已关闭".encode() in r.data)
+    c5 = app.test_client()
+    check("关闭后新会话无需密码直接进入", c5.get("/").status_code == 200)
+    check("设置页回到未启用状态", "未启用".encode() in c5.get("/settings").data)
+    check("关闭后哈希已清除", len(db_rows("SELECT value FROM app_meta WHERE key='startup_pin_hash'")) == 0)
+
     print("\n" + "=" * 50)
     print("通过 %d 项检查，失败 %d 项" % (PASS, len(FAIL)))
     for name, detail in FAIL:

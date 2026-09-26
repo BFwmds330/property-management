@@ -21,7 +21,9 @@ def settings(db):
     logs = query_all(db, "SELECT * FROM operation_log ORDER BY id DESC LIMIT 50")
     return render_template("system/settings.html", backups=system_service.list_backups(),
                            demo_rows=demo_rows, logs=[dict(r) for r in logs],
-                           db_path=DB_PATH, active_nav="settings")
+                           db_path=DB_PATH,
+                           pin_enabled=bool(system_service.get_pin_hash(db)),
+                           active_nav="settings")
 
 
 @system_bp.route("/settings/backup")
@@ -55,6 +57,36 @@ def restore(db):
         pass
     flash("数据恢复成功！恢复前的旧数据已自动备份为 %s，可随时再恢复回去" % restored_from, "success")
     session.pop("cid", None)
+    return redirect(url_for("system.settings"))
+
+
+@system_bp.route("/settings/pin/enable", methods=["POST"])
+@safe
+def pin_enable(db):
+    system_service.enable_pin(db, request.form)
+    db.commit()
+    session["pin_ok"] = True      # 操作者刚设置完密码，本会话不再询问
+    flash("启动密码已开启：下次打开系统（或关闭浏览器后再开）需先输入密码", "success")
+    return redirect(url_for("system.settings"))
+
+
+@system_bp.route("/settings/pin/change", methods=["POST"])
+@safe
+def pin_change(db):
+    system_service.change_pin(db, request.form)
+    db.commit()
+    session["pin_ok"] = True
+    flash("启动密码已修改，请记住新密码", "success")
+    return redirect(url_for("system.settings"))
+
+
+@system_bp.route("/settings/pin/disable", methods=["POST"])
+@safe
+def pin_disable(db):
+    system_service.disable_pin(db, request.form)
+    db.commit()
+    session["pin_ok"] = True
+    flash("启动密码已关闭：进入系统不再需要密码", "success")
     return redirect(url_for("system.settings"))
 
 

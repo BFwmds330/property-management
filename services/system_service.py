@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
-"""系统服务：备份、恢复、自动备份、演示数据的载入与清空、报修登记。"""
+"""系统服务：备份、恢复、自动备份、演示数据的载入与清空、报修登记、启动密码。"""
+import hashlib
+import hmac
 import os
+import re
 import shutil
 import sqlite3
 from datetime import date, datetime, timedelta
@@ -11,6 +14,81 @@ from utils import UserError, clean_str, house_label, parse_int
 
 REQUIRED_TABLES = {"community", "building", "house_type", "house", "resident",
                    "resident_house", "fee_item", "bill", "payment", "operation_log"}
+
+# ---------------------------------------------------------------- 启动密码（v2.4.0）
+# 存 app_meta 表（key=startup_pin_hash），PBKDF2 哈希，数据库丢了也反推不出密码；
+# 日志只记"启用/修改/关闭"动作，绝不记录密码本身。
+
+PIN_KEY = "startup_pin_hash"
+PBKDF2_ITERATIONS = 60000
+
+
+def _hash_pin(pin, salt_hex=None):
+    salt_hex = salt_hex or os.urandom(16).hex()
+    digest = hashlib.pbkdf2_hmac("sha256", pin.encode("utf-8"),
+                                 bytes.fromhex(salt_hex), PBKDF2_ITERATIONS).hex()
+    return "%s$%s" % (salt_hex, digest)
+
+
+def verify_pin_value(pin, stored):
+    """校验明文密码是否匹配存储的哈希。"""
+    try:
+        salt_hex, digest = (stored or "").split("$", 1)
+        calc = hashlib.pbkdf2_hmac("sha256", (pin or "").encode("utf-8"),
+                                   bytes.fromhex(salt_hex), PBKDF2_ITERATIONS).hex()
+        return hmac.compare_digest(calc, digest)
+    except (ValueError, TypeError):
+        return False
+
+
+def get_pin_hash(db):
+    """已设置的启动密码哈希；未启用返回空串。"""
+    row = query_one(db, "SELECT value FROM app_meta WHERE key=?", (PIN_KEY,))
+    return (row["value"] or "") if row else ""
+
+
+def _validate_new_pin(pin, confirm, field_new="新密码"):
+    if not re.fullmatch(r"\d{4}", pin or ""):
+        raise UserError("密码必须是 4 位数字（例如 8848）")
+    if pin != (confirm or ""):
+        raise UserError("两次输入的密码不一致，请重新输入")
+
+
+def enable_pin(db, form):
+    """首次启用启动密码（设置页）。"""
+    if get_pin_hash(db):
+        raise UserError("启动密码已经启用；如需更改请用“修改密码”")
+    pin = (form.get("pin") or "").strip()
+    _validate_new_pin(pin, form.get("pin2"))
+    db.execute("INSERT INTO app_meta (key, value) VALUES (?,?) "
+               "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (PIN_KEY, _hash_pin(pin)))
+    log_op(db, "系统", "启用启动密码", "已启用 4 位数字启动密码（密码本身不入日志）")
+
+
+def change_pin(db, form):
+    """修改启动密码：必须先输对当前密码。"""
+    old_hash = get_pin_hash(db)
+    if not old_hash:
+        raise UserError("当前没有启用启动密码，请先在下方“启用”")
+    old = (form.get("old_pin") or "").strip()
+    if not verify_pin_value(old, old_hash):
+        raise UserError("当前密码不正确，无法修改")
+    new = (form.get("new_pin") or "").strip()
+    _validate_new_pin(new, form.get("new_pin2"))
+    db.execute("UPDATE app_meta SET value=? WHERE key=?", (_hash_pin(new), PIN_KEY))
+    log_op(db, "系统", "修改启动密码", "启动密码已修改（密码本身不入日志）")
+
+
+def disable_pin(db, form):
+    """关闭启动密码：必须先输对当前密码。"""
+    old_hash = get_pin_hash(db)
+    if not old_hash:
+        raise UserError("当前没有启用启动密码")
+    old = (form.get("old_pin") or "").strip()
+    if not verify_pin_value(old, old_hash):
+        raise UserError("当前密码不正确，无法关闭")
+    db.execute("DELETE FROM app_meta WHERE key=?", (PIN_KEY,))
+    log_op(db, "系统", "关闭启动密码", "已关闭启动密码，进入系统不再需要密码")
 
 # ---------------------------------------------------------------- 自动备份
 

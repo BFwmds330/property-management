@@ -55,4 +55,4 @@ def load_edition():
 EDITION = load_edition()
 
 # 系统版本号：每次发布更新，更新日志见 CHANGELOG.md
-VERSION = "2.3.0"
+VERSION = "2.4.0"
