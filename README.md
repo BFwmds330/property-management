@@ -181,3 +181,13 @@ property-management/
 ├── 启动.command          # Mac 一键启动
 └── README.md
 ```
+
+## 📞 联系与支持 (Contact & Support)
+
+如果你在使用过程中遇到问题，建议优先通过以下方式联系：
+
+- **提交 Issue**：[github.com/BFwmds330/property-management/issues](https://github.com/BFwmds330/property-management/issues)
+- **邮件联系**：bfwmds12311@gmail.com（通常会在 48 小时内回复）
+- **社区群组**：加入我们的 QQ 群：**1076703364**
+
+> *注：请勿发送营销邮件。如果是安全漏洞，请邮件联系并标题注明 `[SECURITY]`。*
