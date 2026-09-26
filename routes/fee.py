@@ -159,6 +159,23 @@ def bill_adjust(db, bill_id):
     return redirect(url_for("fee.bill_detail", bill_id=bill_id))
 
 
+@fee_bp.route("/fee/bill/<int:bill_id>/edit-period", methods=["POST"])
+@safe
+def bill_edit_period(db, bill_id):
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    bill = fee_service.get_bill_full(db, bill_id)
+    if bill["community_id"] != cur["id"]:
+        flash("这笔账单不属于当前小区，请先切换小区", "warning")
+        return redirect(url_for("fee.bill_list"))
+    fee_service.edit_bill_period(db, bill_id, request.form)
+    db.commit()
+    flash("账期已修改：%s → %s（可在操作日志追溯）" % (
+        bill["period"], request.form.get("new_period", "")), "success")
+    return redirect(url_for("fee.bill_detail", bill_id=bill_id))
+
+
 @fee_bp.route("/fee/bill/<int:bill_id>/void", methods=["POST"])
 @safe
 def bill_void(db, bill_id):

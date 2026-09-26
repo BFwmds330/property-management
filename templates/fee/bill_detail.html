@@ -130,6 +130,21 @@
     </div>
 
     <div class="card app-card mb-3">
+      <div class="card-header">✏️ 编辑账期（历史导入账单的期间修正）</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('fee.bill_edit_period', bill_id=bill.id) }}">
+          <input type="hidden" name="old_period" value="{{ bill.period }}">
+          <label class="form-label small mb-1">新账期（支持 2029.1-2029.9 / 2026-09 / 2026 三种写法）<span class="req">＊</span></label>
+          <input class="form-control" name="new_period" required maxlength="30" value="{{ bill.period }}">
+          <div class="form-text-hint mb-2">只改账期显示与统计归属，金额/状态/缴费记录不变；同房同项目同账期不能重复。</div>
+          <button class="btn btn-outline-success w-100"
+                  data-confirm-title="修改账期"
+                  data-confirm="确定把账期从 <b>{{ bill.period }}</b> 改为上面填写的新账期吗？<br>修改会记录在操作日志中。">保存新账期</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card app-card mb-3">
       <div class="card-header">⚖️ 调整应收金额（减免/补收）</div>
       <div class="card-body">
         <form method="post" action="{{ url_for('fee.bill_adjust', bill_id=bill.id) }}">

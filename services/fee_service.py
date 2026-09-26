@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """物业费核心模块：收费项目、账单生成、缴费登记、金额调整、作废、欠费与催缴。"""
 import calendar
+import re
 from datetime import date
 
 from database import log_op, query_all, query_one, scalar
@@ -289,6 +290,47 @@ def delete_payment(db, payment_id):
                (p["amount"], p["bill_id"]))
     _refresh_bill_status(db, p["bill_id"])
     log_op(db, "收费", "删除缴费记录", "删除一笔 %s 元的缴费记录（账单 #%d）" % (fmt_money(p["amount"]), p["bill_id"]))
+
+
+def edit_bill_period(db, bill_id, form):
+    """编辑账期（历史导入的账单账期口径自由，如 2029.1-2029.9 / 2025.1-2025.12）。
+
+    支持格式：YYYY.M-YYYY.M、YYYY.M.D-YYYY.M.D、YYYY-MM、YYYY.M、YYYY（年）。
+    账单金额、状态、缴费流水均不变；同房同项目同账期唯一，撞期拒绝并提示。
+    """
+    bill = get_bill_full(db, bill_id)
+    if bill["status"] == "void":
+        raise UserError("已作废的账单不能修改账期")
+    raw = (form.get("new_period") or "").strip()
+    if not raw:
+        raise UserError("请填写新账期")
+    old_label = bill["period"]
+    m = re.match(r"^(\d{4})[.．](\d{1,2})\s*[-—~～至]\s*(\d{4})[.．](\d{1,2})$", raw)
+    if m:
+        y1, m1, y2, m2 = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+        if not (1 <= m1 <= 12 and 1 <= m2 <= 12 and (y2, m2) >= (y1, m1)):
+            raise UserError("账期格式或顺序不正确：%r（应为 起始年.月-截止年.月，例如 2029.1-2029.9）" % raw)
+        period = "%d.%d-%d.%d" % (y1, m1, y2, m2)
+        period_start = "%04d-%02d" % (y1, m1)
+        months = (y2 - y1) * 12 + (m2 - m1) + 1
+    elif re.match(r"^\d{4}[.．-]\d{1,2}$", raw):
+        y1, m1 = int(raw[:4]), int(re.search(r"[.．-](\d{1,2})$", raw).group(1))
+        if not 1 <= m1 <= 12:
+            raise UserError("月份不正确：%r" % raw)
+        period = "%04d-%02d" % (y1, m1)
+        period_start, months = period, 1
+    elif re.fullmatch(r"\d{4}", raw):
+        period, period_start, months = raw, raw + "-01", 12
+    else:
+        raise UserError("账期格式不正确：%r。可用格式：2029.1-2029.9（年.月-年.月）、2026-09（单月）、2026（整年）" % raw)
+    dup = query_one(db, "SELECT id FROM bill WHERE house_id=? AND fee_item_id=? AND period=? AND id!=?",
+                    (bill["house_id"], bill["fee_item_id"], period, bill_id))
+    if dup:
+        raise UserError("这套房已有账期 %s 的账单（账单 #%d），同房同项目同账期不能重复" % (period, dup["id"]))
+    db.execute("UPDATE bill SET period=?, period_start=?, months=? WHERE id=?",
+               (period, period_start, months, bill_id))
+    log_op(db, "收费", "修改账期", "账单 #%d（%s %s）账期由 %s 改为 %s" % (
+        bill_id, bill["item_name"], bill["house_label"], old_label, period))
 
 
 def adjust_bill(db, bill_id, form):
