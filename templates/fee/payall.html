@@ -40,8 +40,8 @@
       <div class="row g-3 mt-1">
         <div class="col-md-4">
           <label class="form-label">本次实收总额（元）<span class="req">＊</span></label>
-          <input class="form-control" type="number" step="0.01" min="0.01" name="total_amount" id="total-amount" required>
-          <div class="form-text-hint">可以少于合计（余款以后再收），按账期从旧到新自动分配</div>
+          <input class="form-control" type="number" step="0.01" min="0" name="total_amount" id="total-amount" required>
+          <div class="form-text-hint">按账期从旧到新自动分配；多收的部分自动转入预收余额</div>
         </div>
         <div class="col-md-3">
           <label class="form-label">缴费日期 <span class="req">＊</span></label>
@@ -61,6 +61,16 @@
           <label class="form-label">备注</label>
           <input class="form-control" name="remark" maxlength="200">
         </div>
+        {% if prepaid_balance > 0 %}
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="use_prepaid" value="1" id="use-prepaid">
+            <label class="form-check-label" for="use-prepaid">
+              用预收余额抵扣（当前余额 <b class="text-success">{{ prepaid_balance | money }}</b> 元；现金不够时勾选，余额按账期从旧到新自动补足）
+            </label>
+          </div>
+        </div>
+        {% endif %}
       </div>
       <button class="btn btn-success mt-3 px-4"
               data-confirm-title="确认合并收款"

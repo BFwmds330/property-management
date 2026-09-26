@@ -63,6 +63,9 @@ def dashboard(db, community_id):
         WHERE status IN ('active','probation') AND contract_end != ''
           AND contract_end >= ? AND contract_end <= ?
         ORDER BY contract_end""", (today.isoformat(), end.isoformat()))]
+    # 最新公告（v2.3.0）
+    from services.notice_service import recent_notices
+    notices = recent_notices(db, community_id)
     return {
         "total_houses": total_houses, "occupied": occupied,
         "occupancy": round(occupied * 100 / total_houses) if total_houses else 0,
@@ -70,7 +73,7 @@ def dashboard(db, community_id):
         "month_rate": round(month_got * 100 / month_recv) if month_recv else None,
         "owed_fen": owed["total"], "owed_houses": owed["houses"],
         "todo_bills": todo_bills, "leases": leases, "birthdays": birthdays, "repairs": repairs,
-        "month": month,
+        "month": month, "notices": notices,
         "staff_active": staff_active, "salary_month_done": salary_month_done,
         "social_month_done": social_month_done, "contracts": contracts,
     }

@@ -182,6 +182,77 @@ def house_label(code, unit, room_no):
     return "%s栋%d单元%d室" % (str(code).replace("#", ""), unit, room_no)
 
 
+_CN_DIGITS = "零壹贰叁肆伍陆柒捌玖"
+_CN_UNITS = ["", "拾", "佰", "仟"]
+_CN_GROUPS = ["", "万", "亿", "万亿"]
+
+
+def money_capital(fen):
+    """分 -> 人民币大写，如 45500 -> '肆佰伍拾伍元整'（收据打印用）。"""
+    fen = int(round(fen or 0))
+    if fen == 0:
+        return "零元整"
+    sign = "负" if fen < 0 else ""
+    fen = abs(fen)
+    yuan, cents = divmod(fen, 100)
+    jiao, fen_one = divmod(cents, 10)
+
+    def four_digits(n):
+        """把 0~9999 的整数转成大写（内部函数，含'零'的读法）。"""
+        out = []
+        zero_pending = False
+        started = False
+        for pos in (3, 2, 1, 0):
+            d = (n // (10 ** pos)) % 10
+            if d == 0:
+                if started:
+                    zero_pending = True
+                continue
+            if zero_pending:
+                out.append("零")
+                zero_pending = False
+            out.append(_CN_DIGITS[d] + _CN_UNITS[pos])
+            started = True
+        return "".join(out) or "零"
+
+    parts = []
+    if yuan > 0:
+        groups = []          # 从低位起的每 4 位一组
+        n = yuan
+        while n > 0:
+            groups.append(n % 10000)
+            n //= 10000
+        yuan_txt = ""
+        for gi in range(len(groups) - 1, -1, -1):
+            g = groups[gi]
+            unit = _CN_GROUPS[gi] if gi < len(_CN_GROUPS) else ""
+            if g == 0:
+                # 整组为 0：补一个零（若后面还有数字）
+                if gi > 0 and not yuan_txt.endswith("零"):
+                    yuan_txt += "零"
+                continue
+            seg = four_digits(g)
+            if g < 1000 and gi < len(groups) - 1 and yuan_txt and not yuan_txt.endswith("零"):
+                seg = "零" + seg     # 组首不足仟且前面有数字，补零
+            yuan_txt += seg + unit
+        yuan_txt = yuan_txt.rstrip("零")
+        parts.append(sign + yuan_txt + "元")
+    elif sign:
+        parts.append(sign)
+
+    if jiao == 0 and fen_one == 0:
+        if yuan > 0:
+            parts.append("整")
+    else:
+        if jiao > 0:
+            parts.append(_CN_DIGITS[jiao] + "角")
+        elif yuan > 0 and fen_one > 0:
+            parts.append("零")
+        if fen_one > 0:
+            parts.append(_CN_DIGITS[fen_one] + "分")
+    return "".join(parts)
+
+
 def today_str():
     return date.today().strftime("%Y-%m-%d")
 
@@ -295,13 +366,23 @@ def age_from_birth(birth_date):
 
 # ---------------------------------------------------------------- CSV 导出
 
+def _csv_cell(v):
+    """防 Excel 公式注入：文本以 = + @ 开头（或以 - 开头但不是负数）时前置单引号。"""
+    if isinstance(v, str) and v:
+        if v[0] in ("=", "+", "@"):
+            return "'" + v
+        if v[0] == "-" and not re.fullmatch(r"-[\d.]+", v):
+            return "'" + v
+    return v
+
+
 def csv_response(filename, headers, rows):
-    """生成 Excel 打开不乱码的 CSV（UTF-8 带 BOM）。"""
+    """生成 Excel 打开不乱码的 CSV（UTF-8 带 BOM），文本字段防公式注入。"""
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(headers)
+    writer.writerow([_csv_cell(c) for c in headers])
     for row in rows:
-        writer.writerow(["" if c is None else c for c in row])
+        writer.writerow(["" if c is None else _csv_cell(c) for c in row])
     data = "﻿" + buf.getvalue()
     resp = Response(data, mimetype="text/csv; charset=utf-8")
     ascii_name = "export.csv"

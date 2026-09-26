@@ -45,20 +45,25 @@
 </div></div>
 
 <div class="card app-card">
-  <div class="card-header d-flex justify-content-between flex-wrap">
+  <form method="get" action="{{ url_for('fee.receipt') }}" target="_blank">
+  <div class="card-header d-flex justify-content-between flex-wrap align-items-center">
     <span>共 {{ total_count }} 笔流水{% if pages > 1 %} · 第 {{ page }} / {{ pages }} 页{% endif %}</span>
-    <span>合计实收：<b class="text-success">{{ total | money }} 元</b></span>
+    <span class="d-flex align-items-center gap-3">
+      <span>合计实收：<b class="text-success">{{ total | money }} 元</b></span>
+      <button class="btn btn-sm btn-outline-primary" title="勾选后打印，一联一张收据">🖨 打印勾选的收据</button>
+    </span>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover table-sm-fixed mb-0 align-middle">
         <thead><tr>
-          <th>缴费日期</th><th>房号</th><th>业主</th><th>项目</th><th>账期</th>
+          <th style="width:2rem"></th><th>缴费日期</th><th>房号</th><th>业主</th><th>项目</th><th>账期</th>
           <th class="text-end">金额(元)</th><th>方式</th><th>收据号</th><th>备注</th>
         </tr></thead>
         <tbody>
           {% for r in rows %}
           <tr>
+            <td><input class="form-check-input" type="checkbox" name="ids" value="{{ r.id }}"></td>
             <td>{{ r.pay_date }}</td>
             <td class="fw-bold">{{ r.house_label }}</td>
             <td>{{ r.owner_name or '—' }}</td>
@@ -70,12 +75,13 @@
             <td class="small text-secondary">{{ r.remark }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="9" class="text-center text-secondary py-4">没有符合条件的缴费记录</td></tr>
+          <tr><td colspan="10" class="text-center text-secondary py-4">没有符合条件的缴费记录</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
+  </form>
   {% if pages > 1 %}
   <div class="card-body py-2 border-top">
     <nav><ul class="pagination pagination-sm justify-content-center mb-0">

@@ -182,17 +182,51 @@ def list_repairs(db, community_id, status=""):
     return rows
 
 
-def add_repair(db, community_id, form):
+def add_repair(db, community_id, form, photo_file=None):
     content = clean_str(form.get("content"), "报修内容", 500, required=True)
     house_id = parse_int(form.get("house_id"), "房屋", 1, 10**9, required=False, default=None) or None
     if house_id:
         h = query_one(db, "SELECT community_id FROM house WHERE id=?", (house_id,))
         if not h or h["community_id"] != community_id:
             raise UserError("所选房屋不属于当前小区")
+    photo_path = _save_repair_photo(photo_file)
     db.execute(
-        "INSERT INTO repair (community_id, house_id, content) VALUES (?,?,?)",
-        (community_id, house_id, content))
-    log_op(db, "报修", "新增报修", "新增报修登记：%s" % content[:50])
+        "INSERT INTO repair (community_id, house_id, content, photo_path) VALUES (?,?,?,?)",
+        (community_id, house_id, content, photo_path))
+    log_op(db, "报修", "新增报修", "新增报修登记：%s%s" % (content[:50], "（含照片）" if photo_path else ""))
+
+
+PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+PHOTO_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _save_repair_photo(photo_file):
+    """保存报修照片到 data/uploads/，返回文件名；未上传返回 ''。
+
+    防呆：扩展名白名单 + 5MB 上限；文件名由系统生成（时间戳+随机数），不使用上传文件名，
+    因此没有路径穿越风险。
+    """
+    import os
+    import secrets as _secrets
+    from datetime import datetime as _dt
+    if photo_file is None or not getattr(photo_file, "filename", ""):
+        return ""
+    from config import UPLOAD_DIR
+    orig = (photo_file.filename or "")
+    dot = orig.rfind(".")
+    ext = orig[dot:].lower() if dot >= 0 else ""
+    if ext not in PHOTO_EXTS:
+        raise UserError("照片格式不支持：请上传 jpg / png / webp / gif 图片")
+    data = photo_file.read()
+    if len(data) > PHOTO_MAX_BYTES:
+        raise UserError("照片太大了（最多 5MB），请压缩后再上传")
+    if not data:
+        return ""
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    name = "repair_%s_%s%s" % (_dt.now().strftime("%Y%m%d%H%M%S"), _secrets.token_hex(4), ext)
+    with open(os.path.join(UPLOAD_DIR, name), "wb") as f:
+        f.write(data)
+    return name
 
 
 def update_repair_status(db, rid, action):

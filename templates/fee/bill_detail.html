@@ -47,10 +47,12 @@
                 <td>{{ p.method }}</td>
                 <td>{{ p.receipt_no or '—' }}</td>
                 <td class="small text-secondary">{{ p.remark }}</td>
-                <td>
-                  <form method="post" action="{{ url_for('fee.payment_delete', payment_id=p.id) }}"
+                <td class="text-nowrap">
+                  <a class="btn btn-sm btn-outline-primary" target="_blank"
+                     href="{{ url_for('fee.receipt', ids=p.id) }}">🖨 收据</a>
+                  <form class="d-inline mt-1" method="post" action="{{ url_for('fee.payment_delete', payment_id=p.id) }}"
                         data-confirm-title="删除缴费记录"
-                        data-confirm="确定删除这笔 {{ p.amount | money }} 元的缴费记录吗？<br>账单状态会自动回退。">
+                        data-confirm="确定删除这笔 {{ p.amount | money }} 元的缴费记录吗？<br>账单状态会自动回退。{% if p.method == '预收抵扣' %}<br><b>这是预收抵扣流水，删除后金额会退回预收余额。</b>{% endif %}">
                     <input type="hidden" name="bill_id" value="{{ bill.id }}">
                     <button class="btn btn-sm btn-outline-danger">删除</button>
                   </form>

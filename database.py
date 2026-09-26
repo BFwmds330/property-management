@@ -254,11 +254,37 @@ CREATE TABLE IF NOT EXISTS repair (
     community_id  INTEGER NOT NULL REFERENCES community(id) ON DELETE CASCADE,
     house_id      INTEGER REFERENCES house(id) ON DELETE SET NULL,
     content       TEXT NOT NULL,
+    photo_path    TEXT DEFAULT '',
     status        TEXT DEFAULT 'pending',
     handler_note  TEXT DEFAULT '',
     created_at    TEXT DEFAULT (datetime('now','localtime')),
     updated_at    TEXT DEFAULT (datetime('now','localtime'))
 );
+
+-- 预收款台账（v2.3.0）：正=入账（多收转预收 / 手工登记），负=抵扣到账单
+CREATE TABLE IF NOT EXISTS prepaid (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    house_id   INTEGER NOT NULL REFERENCES house(id) ON DELETE CASCADE,
+    amount     INTEGER NOT NULL,
+    method     TEXT DEFAULT '',
+    op_date    TEXT DEFAULT '',
+    remark     TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_prepaid_house ON prepaid(house_id);
+
+-- 公告（v2.3.0）：小区级，置顶优先
+CREATE TABLE IF NOT EXISTS notice (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    community_id INTEGER NOT NULL REFERENCES community(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL,
+    content      TEXT DEFAULT '',
+    pinned       INTEGER DEFAULT 0,
+    created_at   TEXT DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_notice_community ON notice(community_id);
 
 CREATE TABLE IF NOT EXISTS operation_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -319,6 +345,9 @@ def _migrate(db):
     bcols = {r[1] for r in db.execute("PRAGMA table_info(bill)")}
     if "vehicle_id" not in bcols:
         db.execute("ALTER TABLE bill ADD COLUMN vehicle_id INTEGER REFERENCES vehicle(id) ON DELETE SET NULL")
+    rcols = {r[1] for r in db.execute("PRAGMA table_info(repair)")}
+    if "photo_path" not in rcols:
+        db.execute("ALTER TABLE repair ADD COLUMN photo_path TEXT DEFAULT ''")
 
 
 def ensure_schema(db):

@@ -745,7 +745,7 @@ def main():
              "/expense",
              "/staff/import", "/staff/%d" % sid_staff, "/staff/%d/edit" % sid_staff, "/resident/add?house_id=%d&role=member" % hid_main,
              "/fee/items", "/fee/bills", "/fee/generate", "/fee/overdue", "/fee/payments",
-             "/report", "/repair", "/settings", "/house/%d" % hid_main,
+             "/report", "/repair", "/notice", "/settings", "/house/%d" % hid_main,
              "/house/%d/edit" % hid_main, "/fee/house/%d/payall" % hid_main,
              "/fee/bill/%d" % bill["id"], "/resident/export"]
     ok = True
@@ -829,6 +829,126 @@ def main():
     check("WUYE_LAN=1 时对局域网开放", _bind_host() == "0.0.0.0")
     os.environ.pop("WUYE_LAN", None)
     check("默认仅本机可访问", _bind_host() == "127.0.0.1")
+
+    # ============ 19. v2.3.0：预收款 / 账单导出 / 收据打印 / 公告 / 报修照片 ============
+    print("\n== 预收款（多收转预收 / 余额抵扣）==")
+    from services import prepaid_service as _pp
+    con_p2 = sqlite3.connect(config.DB_PATH)
+    con_p2.row_factory = sqlite3.Row
+    try:
+        # ① 手工登记预收 100 元
+        r = c2.post("/house/%d/prepaid/add" % hid_payall,
+                    data={"amount": "100.00", "op_date": TODAY.isoformat(),
+                          "method": "现金", "remark": "提前预存"}, follow_redirects=True)
+        check("手工登记预收 100 元成功", "预收款登记成功".encode() in r.data)
+        check("预收余额入账 100 元",
+              _pp.get_balance(con_p2, hid_payall) == 10000,
+              str(_pp.get_balance(con_p2, hid_payall)))
+        # 负数金额被拦截
+        r = c2.post("/house/%d/prepaid/add" % hid_payall,
+                    data={"amount": "-5", "op_date": TODAY.isoformat()}, follow_redirects=False)
+        check("负数预收被拦截", r.status_code == 302)
+
+        # ② 一键缴清多收自动转预收：hid_main 未缴合计（从库里取），实收 300 元
+        main_bills = db_rows("""SELECT id, amount_receivable - amount_received AS rem
+                                FROM bill WHERE house_id=? AND status IN ('unpaid','partial')""",
+                             (hid_main,))
+        main_ids = [str(b["id"]) for b in main_bills]
+        sum_rem = sum(b["rem"] for b in main_bills)
+        bal0 = _pp.get_balance(con_p2, hid_main)
+        r = c2.post("/fee/house/%d/payall" % hid_main,
+                    data={"bill_ids": main_ids, "total_amount": "300.00",
+                          "pay_date": TODAY.isoformat(), "method": "现金"}, follow_redirects=True)
+        check("多收不再报错，且提示转预收", "自动转入该房屋预收余额".encode() in r.data)
+        n_left = db_rows("SELECT COUNT(*) AS n FROM bill WHERE house_id=? AND status IN ('unpaid','partial')",
+                         (hid_main,))[0]["n"]
+        check("一键缴清后账单全部缴清", n_left == 0, "剩余未缴 %d 笔" % n_left)
+        expect_bal = bal0 + 30000 - sum_rem
+        check("多收部分自动入预收台账（%s 分）" % expect_bal,
+              _pp.get_balance(con_p2, hid_main) == expect_bal,
+              str(_pp.get_balance(con_p2, hid_main)))
+
+        # ③ 用预收余额抵扣：给 hid_payall 插一笔 100 元未缴账单，全额用余额抵
+        con_t2 = sqlite3.connect(config.DB_PATH)
+        con_t2.execute("""INSERT INTO bill (house_id, fee_item_id, period, period_start, months,
+                           amount_receivable, amount_received)
+                          VALUES (?,?,'预收抵扣测试期','2026-01',1,10000,0)""", (hid_payall, f1))
+        con_t2.commit()
+        bid_pd = con_t2.execute("SELECT id FROM bill WHERE period='预收抵扣测试期'").fetchone()[0]
+        con_t2.close()
+        r = c2.post("/fee/house/%d/payall" % hid_payall,
+                    data={"bill_ids": [str(bid_pd)], "total_amount": "0",
+                          "use_prepaid": "1", "pay_date": TODAY.isoformat()}, follow_redirects=True)
+        check("预收余额可抵扣账单（0 元现金）", "已用预收余额抵扣".encode() in r.data)
+        st_pd = db_rows("SELECT status, amount_received FROM bill WHERE id=?", (bid_pd,))[0]
+        check("抵扣后账单已缴清", st_pd["status"] == "paid" and st_pd["amount_received"] == 10000)
+        pm_pd = db_rows("SELECT method FROM payment WHERE bill_id=?", (bid_pd,))
+        check("抵扣生成「预收抵扣」流水", len(pm_pd) == 1 and pm_pd[0]["method"] == "预收抵扣")
+        check("台账同步记负数", _pp.get_balance(con_p2, hid_payall) == 0,
+              str(_pp.get_balance(con_p2, hid_payall)))
+        # ④ 删除预收抵扣流水 → 金额退回预收余额
+        pay_pd = db_rows("SELECT id FROM payment WHERE bill_id=?", (bid_pd,))[0]["id"]
+        c2.post("/fee/payment/%d/delete" % pay_pd, data={"bill_id": str(bid_pd)},
+                follow_redirects=True)
+        st_pd2 = db_rows("SELECT status, amount_received FROM bill WHERE id=?", (bid_pd,))[0]
+        check("删除抵扣流水后账单回退未缴", st_pd2["status"] == "unpaid")
+        check("删除抵扣流水后预收余额退回", _pp.get_balance(con_p2, hid_payall) == 10000,
+              str(_pp.get_balance(con_p2, hid_payall)))
+    finally:
+        con_p2.close()
+
+    print("\n== 账单导出 / 收据打印 / CSV 防注入 ==")
+    r = c2.get("/fee/bills/export")
+    check("账单列表 CSV 可导出", r.status_code == 200 and r.data.startswith(b"\xef\xbb\xbf"))
+    r = c2.get("/fee/bills/export?status=paid")
+    check("账单导出支持筛选条件", r.status_code == 200)
+    import utils as _u23
+    resp = _u23.csv_response("t.csv", ["a", "b", "c"], [["=1+1", "-5.00", "-abc"]])
+    check("CSV 公式注入被防护（数字负数保留）",
+          b"'=1+1" in resp.data and b"-5.00" in resp.data and b"'-abc" in resp.data,
+          resp.data.decode("utf-8"))
+    check("金额大写：整/零/角分", _u23.money_capital(45500) == "肆佰伍拾伍元整"
+          and _u23.money_capital(100500) == "壹仟零伍元整"
+          and _u23.money_capital(105050) == "壹仟零伍拾元伍角"
+          and _u23.money_capital(100005) == "壹仟元零伍分"
+          and _u23.money_capital(50) == "伍角",
+          "%s|%s|%s" % (_u23.money_capital(45500), _u23.money_capital(100500), _u23.money_capital(50)))
+    pid_rc = db_rows("SELECT id FROM payment ORDER BY id DESC LIMIT 1")[0]["id"]
+    r = c2.get("/fee/receipt?ids=%d" % pid_rc)
+    check("收据打印页可打开（含大写金额）", r.status_code == 200
+          and "收款收据".encode() in r.data and "大写".encode() in r.data)
+
+    print("\n== 公告 ==")
+    r = c2.post("/notice/add", data={"title": "测试公告标题", "content": "内容正文",
+                                     "pinned": "1"}, follow_redirects=True)
+    check("发布公告", "测试公告标题".encode() in r.data)
+    r = c2.get("/")
+    check("总览页显示最新公告", "测试公告标题".encode() in r.data)
+    nid23 = db_rows("SELECT id FROM notice WHERE title='测试公告标题'")[0]["id"]
+    r = c2.post("/notice/%d/delete" % nid23, follow_redirects=True)
+    n_n = db_rows("SELECT COUNT(*) AS n FROM notice WHERE title='测试公告标题'")[0]["n"]
+    check("删除公告", n_n == 0)
+
+    print("\n== 报修照片 ==")
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    r = c2.post("/repair/add", data={"house_id": str(hid_main), "content": "照片测试报修",
+                                     "photo": (io.BytesIO(png), "现场.png")},
+                content_type="multipart/form-data", follow_redirects=True)
+    check("带照片报修登记成功", "报修已登记".encode() in r.data)
+    row_ph = db_rows("SELECT photo_path FROM repair WHERE content='照片测试报修'")[0]["photo_path"]
+    check("照片落盘并记录文件名", bool(row_ph) and row_ph.startswith("repair_"))
+    r = c2.get("/repair")
+    check("报修列表显示照片入口", "📷 查看".encode() in r.data)
+    r = c2.get("/repair/photo/%s" % row_ph)
+    check("照片可查看", r.status_code == 200)
+    r = c2.post("/repair/add", data={"house_id": str(hid_main), "content": "坏照片测试",
+                                     "photo": (io.BytesIO(b"hello"), "x.txt")},
+                content_type="multipart/form-data", follow_redirects=False)
+    check("非图片格式被拦截", r.status_code == 302)
+    r = c2.get("/repair/photo/repair_x.png")
+    check("伪造照片名被拦截", r.status_code == 302)
+    r = c2.get("/")
+    check("总览页本月口径说明显示", "历史导入的跨年账单不计入本月".encode() in r.data)
 
     print("\n" + "=" * 50)
     print("通过 %d 项检查，失败 %d 项" % (PASS, len(FAIL)))

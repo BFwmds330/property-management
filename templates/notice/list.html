@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}公告 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>📢 公告{% if cur %} · {{ cur.name }}{% endif %}</h5>
+</div>
+
+<div class="card app-card mb-3">
+  <div class="card-header">＋ 发布新公告</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('notice.notice_add') }}">
+      <div class="row g-2">
+        <div class="col-md-6">
+          <label class="form-label small mb-1">标题 <span class="req">＊</span></label>
+          <input class="form-control form-control-sm" name="title" required maxlength="100" placeholder="例如：本月物业费开始收缴">
+        </div>
+        <div class="col-md-6 d-flex align-items-end pb-2">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="pinned" value="1" id="pin-check">
+            <label class="form-check-label small" for="pin-check">置顶显示</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label small mb-1">内容</label>
+          <textarea class="form-control form-control-sm" name="content" rows="3" maxlength="2000"
+                    placeholder="公告正文（可选，最多 2000 字）"></textarea>
+        </div>
+        <div class="col-12">
+          <button class="btn btn-success btn-sm px-4">发布</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card app-card">
+  <div class="card-header">公告列表（置顶在前）</div>
+  <div class="card-body p-0">
+    {% for n in rows %}
+    <div class="border-bottom p-3">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+          <b>{% if n.pinned %}<span class="badge text-bg-danger me-1">置顶</span>{% endif %}{{ n.title }}</b>
+          <span class="text-secondary small ms-2">{{ n.created_at[:10] }}</span>
+        </div>
+        <form method="post" action="{{ url_for('notice.notice_delete', nid=n.id) }}"
+              data-confirm-title="删除公告" data-confirm="确定删除公告「<b>{{ n.title }}</b>」吗？">
+          <button class="btn btn-sm btn-outline-danger">删除</button>
+        </form>
+      </div>
+      {% if n.content %}<div class="small mt-2" style="white-space: pre-wrap;">{{ n.content }}</div>{% endif %}
+    </div>
+    {% else %}
+    <p class="text-secondary text-center py-4 mb-0">还没有公告。发布后会在总览页显示最新三条。</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
