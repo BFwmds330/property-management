@@ -6,7 +6,7 @@ from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    session, url_for)
 
 from routes.helpers import cur_community, need_community, safe
-from services import house_service, house_import, resident_service
+from services import house_service, house_import, prepaid_service, resident_service
 from utils import csv_response, safe_int
 
 house_bp = Blueprint("house", __name__)
@@ -112,8 +112,31 @@ def house_detail(db, hid):
     residents = resident_service.house_residents(db, hid)
     history = resident_service.house_history(db, hid)
     bills = resident_bills(db, hid)
+    prepaid_balance = prepaid_service.get_balance(db, hid)
+    prepaid_entries = prepaid_service.list_entries(db, hid)
     return render_template("house/detail.html", house=house, residents=residents,
-                           history=history, bills=bills, active_nav="house")
+                           history=history, bills=bills,
+                           prepaid_balance=prepaid_balance, prepaid_entries=prepaid_entries,
+                           active_nav="house")
+
+
+@house_bp.route("/house/<int:hid>/prepaid/add", methods=["POST"])
+@safe
+def prepaid_add(db, hid):
+    """手工登记预收款（多收挂账 / 提前预存）。"""
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    house = house_service.get_house_full(db, hid)
+    if house["community_id"] != cur["id"]:
+        flash("这套房屋不属于当前小区，请先切换小区", "warning")
+        return redirect(url_for("house.house_list"))
+    amount = prepaid_service.credit_from_form(db, hid, request.form)
+    db.commit()
+    from utils import fmt_money
+    flash("预收款登记成功：入账 %s 元，当前余额 %s 元"
+          % (fmt_money(amount), fmt_money(prepaid_service.get_balance(db, hid))), "success")
+    return redirect(url_for("house.house_detail", hid=hid))
 
 
 def resident_bills(db, hid):

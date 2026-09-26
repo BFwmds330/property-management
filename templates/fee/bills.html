@@ -6,7 +6,8 @@
   <div class="d-flex gap-2 flex-wrap">
     <a class="btn btn-outline-success" href="{{ url_for('fee.fee_items') }}">收费项目</a>
     <a class="btn btn-outline-success" href="{{ url_for('fee.overdue') }}">欠费管理</a>
-    <a class="btn btn-success" href="{{ url_for('fee.generate_form') }}">生成账单</a>
+    <a class="btn btn-outline-success" href="{{ url_for('fee.generate_form') }}">生成账单</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('fee.bills_export', period=f_period, fee_item_id=f_item, status=f_status, building_id=f_building, keyword=f_keyword) }}">⬇ 导出 CSV</a>
   </div>
 </div>
 

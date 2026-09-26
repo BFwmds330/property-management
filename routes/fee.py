@@ -5,7 +5,7 @@ from flask import redirect, flash, render_template, request, url_for, Blueprint,
 
 from routes.helpers import build_pagination, cur_community, need_community, safe
 from services import fee_service, house_service
-from utils import csv_response, safe_int, today_str
+from utils import BILL_STATUS, UserError, csv_response, house_label, safe_int, today_str
 
 fee_bp = Blueprint("fee", __name__)
 
@@ -202,6 +202,27 @@ def payment_delete(db, payment_id):
     return redirect(url_for("fee.payments"))
 
 
+@fee_bp.route("/fee/bills/export")
+@safe
+def bills_export(db):
+    """账单列表导出 CSV：与账单页相同的筛选条件，导出全部符合条件的行。"""
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    args = request.args
+    rows = fee_service.list_bills(
+        db, cur["id"], period=args.get("period", ""),
+        fee_item_id=safe_int(args.get("fee_item_id")),
+        status=args.get("status", ""),
+        building_id=safe_int(args.get("building_id")),
+        keyword=args.get("keyword", ""))
+    headers = ["房号", "业主", "收费项目", "账期", "应收(元)", "已收(元)", "未收(元)", "状态"]
+    out = [[r["house_label"], r["owner_name"] or "", r["item_name"], r["period"],
+            "%.2f" % (r["amount_receivable"] / 100), "%.2f" % (r["amount_received"] / 100),
+            "%.2f" % (r["owed_fen"] / 100), BILL_STATUS.get(r["status"], r["status"])] for r in rows]
+    return csv_response("账单列表.csv", headers, out)
+
+
 # ---------------------------------------------------------------- 一键缴清
 
 @fee_bp.route("/fee/house/<int:hid>/payall")
@@ -215,17 +236,25 @@ def payall_form(db, hid):
         flash("这套房屋不属于当前小区，请先切换小区", "warning")
         return redirect(url_for("house.house_list"))
     bills = fee_service.house_overdue_summary(db, hid)
+    from services import prepaid_service
+    prepaid_balance = prepaid_service.get_balance(db, hid)
     return render_template("fee/payall.html", house=house, bills=bills,
+                           prepaid_balance=prepaid_balance,
                            pay_date_default=today_str(), active_nav="fee")
 
 
 @fee_bp.route("/fee/house/<int:hid>/payall", methods=["POST"])
 @safe
 def payall_post(db, hid):
-    total, paid_count = fee_service.pay_all_for_house(db, hid, request.form)
+    total, paid_count, excess, offset = fee_service.pay_all_for_house(db, hid, request.form)
     db.commit()
     from utils import fmt_money
-    flash("合并收款成功：实收 %s 元，冲抵 %d 笔账单" % (fmt_money(total), paid_count), "success")
+    msg = "合并收款成功：实收 %s 元，冲抵 %d 笔账单" % (fmt_money(total), paid_count)
+    if excess > 0:
+        msg += "；多收的 %s 元已自动转入该房屋预收余额" % fmt_money(excess)
+    if offset > 0:
+        msg += "；已用预收余额抵扣 %s 元" % fmt_money(offset)
+    flash(msg, "success")
     return redirect(url_for("house.house_detail", hid=hid))
 
 
@@ -321,3 +350,42 @@ def payments_export(db):
     out = [[r["pay_date"], r["house_label"], r["owner_name"] or "", r["item_name"], r["period"],
             "%.2f" % (r["amount"] / 100), r["method"], r["receipt_no"], r["remark"]] for r in rows]
     return csv_response("缴费流水.csv", headers, out)
+
+
+# ---------------------------------------------------------------- 收据打印
+
+@fee_bp.route("/fee/receipt")
+@safe
+def receipt(db):
+    """收款收据打印页：?ids=1,2,3 多选流水，一联一张收据，浏览器打印即可（可另存 PDF）。"""
+    from database import query_all
+    from utils import money_capital
+    ids = []
+    for part in (request.args.get("ids") or "").split(","):
+        pid = safe_int(part)
+        if pid > 0:
+            ids.append(pid)
+    if not ids:
+        raise UserError("请先选择要打印的缴费记录")
+    ids = ids[:50]     # 一次最多 50 联，防止误传超大列表
+    marks = ",".join("?" for _ in ids)
+    rows = query_all(db, """
+        SELECT p.*, b.period, b.period_start, f.name AS item_name,
+               h.unit, h.room_no, bd.code AS building_code, r.name AS owner_name,
+               c.name AS community_name
+        FROM payment p
+        JOIN bill b ON b.id = p.bill_id
+        JOIN fee_item f ON f.id = b.fee_item_id
+        JOIN house h ON h.id = b.house_id
+        JOIN building bd ON bd.id = h.building_id
+        LEFT JOIN resident r ON r.id = h.owner_resident_id
+        JOIN community c ON c.id = h.community_id
+        WHERE p.id IN (%s)
+        ORDER BY p.id""" % marks, ids)
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["house_label"] = house_label(d["building_code"], d["unit"], d["room_no"])
+        d["capital"] = money_capital(d["amount"])
+        out.append(d)
+    return render_template("fee/receipt.html", rows=out, active_nav="fee")

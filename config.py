@@ -9,6 +9,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 数据目录：所有数据（数据库、备份）都保存在这里，绝不放到别处
 DATA_DIR = os.path.join(BASE_DIR, "data")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")   # 报修照片等上传文件（v2.3.0）
 
 # SQLite 数据库文件（主数据文件）
 DB_PATH = os.path.join(DATA_DIR, "property.db")
@@ -25,7 +26,7 @@ AUTO_BACKUP_KEEP = 14
 
 def ensure_dirs():
     """确保数据目录存在（首次运行时自动创建）。"""
-    for d in (DATA_DIR, BACKUP_DIR):
+    for d in (DATA_DIR, BACKUP_DIR, UPLOAD_DIR):
         if not os.path.isdir(d):
             try:
                 os.makedirs(d)
@@ -54,4 +55,4 @@ def load_edition():
 EDITION = load_edition()
 
 # 系统版本号：每次发布更新，更新日志见 CHANGELOG.md
-VERSION = "2.2.0"
+VERSION = "2.3.0"

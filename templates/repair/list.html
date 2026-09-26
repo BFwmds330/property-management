@@ -16,12 +16,13 @@
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover table-sm-fixed mb-0 align-middle">
-        <thead><tr><th>房屋</th><th>报修内容</th><th>状态</th><th>处理备注</th><th>登记时间</th><th>操作</th></tr></thead>
+        <thead><tr><th>房屋</th><th>报修内容</th><th>照片</th><th>状态</th><th>处理备注</th><th>登记时间</th><th>操作</th></tr></thead>
         <tbody>
           {% for r in rows %}
           <tr>
             <td class="fw-bold">{{ r.house_label }}</td>
             <td>{{ r.content }}</td>
+            <td>{% if r.photo_path %}<a href="{{ url_for('repair.repair_photo', name=r.photo_path) }}" target="_blank">📷 查看</a>{% else %}<span class="text-secondary small">—</span>{% endif %}</td>
             <td><span class="badge text-bg-{{ REPAIR_STATUS_COLOR[r.status] }}">{{ REPAIR_STATUS[r.status] }}</span></td>
             <td class="small text-secondary">{{ r.handler_note or '—' }}</td>
             <td class="small text-secondary">{{ r.created_at[:10] }}</td>
@@ -45,7 +46,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-center text-secondary py-4">暂无报修记录</td></tr>
+          <tr><td colspan="7" class="text-center text-secondary py-4">暂无报修记录</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -57,7 +58,7 @@
 <div class="modal fade" id="addRepair" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="post" action="{{ url_for('repair.repair_add') }}">
+      <form method="post" action="{{ url_for('repair.repair_add') }}" enctype="multipart/form-data">
         <div class="modal-header"><h5 class="modal-title">＋ 新增报修</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
@@ -74,6 +75,10 @@
             <label class="form-label">报修内容 <span class="req">＊</span></label>
             <textarea class="form-control" name="content" rows="3" required maxlength="500"
                       placeholder="例如：厨房下水道堵塞"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">现场照片（可选，jpg/png/webp/gif，≤5MB）</label>
+            <input class="form-control" type="file" name="photo" accept=".jpg,.jpeg,.png,.webp,.gif">
           </div>
         </div>
         <div class="modal-footer">

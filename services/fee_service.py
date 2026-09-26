@@ -312,6 +312,16 @@ def delete_payment(db, payment_id):
     db.execute("UPDATE bill SET amount_received = MAX(0, amount_received - ?) WHERE id=?",
                (p["amount"], p["bill_id"]))
     _refresh_bill_status(db, p["bill_id"])
+    # 预收抵扣的流水删掉后，把等额金额退回该房屋的预收余额（保持台账平衡）
+    if p["method"] == "预收抵扣":
+        from services import prepaid_service
+        b = query_one(db, "SELECT house_id FROM bill WHERE id=?", (p["bill_id"],))
+        if b:
+            prepaid_service.add_ledger(
+                db, b["house_id"], p["amount"], method="预收退回",
+                remark="删除预收抵扣流水（账单 #%d），金额退回预收余额" % p["bill_id"],
+                log_detail="删除预收抵扣流水 %s 元，金额已退回房屋 #%d 的预收余额"
+                           % (fmt_money(p["amount"]), b["house_id"]))
     log_op(db, "收费", "删除缴费记录", "删除一笔 %s 元的缴费记录（账单 #%d）" % (fmt_money(p["amount"]), p["bill_id"]))
 
 
@@ -389,13 +399,24 @@ def void_bill(db, bill_id):
 
 
 def pay_all_for_house(db, house_id, form):
-    """一次缴清同一房屋的多张账单：按账期从旧到新依次冲抵。"""
+    """一次缴清同一房屋的多张账单：按账期从旧到新依次冲抵（v2.3.0 起支持预收）。
+
+    - 实收总额超过所选账单未缴合计的部分**自动转预收**（不再报错），多收的钱挂到该房屋余额；
+    - 勾选"用预收余额抵扣"时，现金冲抵后仍未缴清的账单按同样顺序用预收余额补足：
+      账单侧记 method='预收抵扣' 的缴费流水，台账记等额负数。
+    返回 (现金实收分, 冲抵账单笔数, 转预收分, 预收抵扣分)。
+    """
     from services.house_service import get_house_full
+    from services import prepaid_service
     house = get_house_full(db, house_id)
     bill_ids = form.getlist("bill_ids")
     if not bill_ids:
         raise UserError("请至少勾选一笔要缴的账单")
-    total = parse_amount(form.get("total_amount"), "本次实收总额", required=True, allow_zero=False)
+    use_prepaid = form.get("use_prepaid") == "1"
+    total = parse_amount(form.get("total_amount"), "本次实收总额", required=True,
+                         allow_zero=use_prepaid)
+    if total == 0 and not use_prepaid:
+        raise UserError("实收总额不能为 0；如果这次全部用预收余额抵扣，请勾选“用预收余额抵扣”")
     pay_date = parse_date(form.get("pay_date"), "缴费日期", required=True)
     method = (form.get("method") or "现金").strip()
     if method not in ("现金", "转账", "扫码"):
@@ -411,13 +432,13 @@ def pay_all_for_house(db, house_id, form):
     for bid in bill_ids:
         if safe_int(bid, -1) not in valid_ids:
             raise UserError("所选账单里有不属于这套房的记录，请刷新页面后重试")
-    if not bills:
+    if not bills and not use_prepaid:
         raise UserError("所选账单都已缴清或作废，无需缴费")
     sum_remaining = sum(b["amount_receivable"] - b["amount_received"] for b in bills)
-    if total > sum_remaining:
-        raise UserError("本次实收总额（%s 元）超过所选账单未缴合计（%s 元），请核对金额"
-                        % (fmt_money(total), fmt_money(sum_remaining)))
-    left = total
+
+    # 第一轮：现金按账期从旧到新冲抵，最多冲到全部缴清
+    applied = min(total, sum_remaining)
+    left = applied
     paid_count = 0
     for b in bills:
         if left <= 0:
@@ -433,10 +454,48 @@ def pay_all_for_house(db, house_id, form):
         _refresh_bill_status(db, b["id"])
         left -= pay
         paid_count += 1
+
+    # 第二轮：多收的部分自动转预收
+    excess = total - applied
+    house_label_txt = house_label(house["building_code"], house["unit"], house["room_no"])
+    if excess > 0:
+        prepaid_service.add_ledger(
+            db, house_id, excess, method=method, op_date=pay_date,
+            remark="一键缴清多收转预收（现金 %s 元 > 账单未缴 %s 元）"
+                   % (fmt_money(total), fmt_money(sum_remaining)),
+            log_detail="%s 一键缴清多收 %s 元自动转预收" % (house_label_txt, fmt_money(excess)))
+
+    # 第三轮：勾选了预收抵扣时，把剩余未缴账单用余额补足
+    offset_total = 0
+    if use_prepaid:
+        balance = prepaid_service.get_balance(db, house_id)
+        still = query_all(db, """
+            SELECT * FROM bill WHERE id IN (%s) AND status IN ('unpaid','partial')
+            ORDER BY period_start, id""" % marks, bill_ids)
+        for b in still:
+            if balance <= 0:
+                break
+            remaining = b["amount_receivable"] - b["amount_received"]
+            if remaining <= 0:
+                continue
+            pay = min(remaining, balance)
+            db.execute(
+                "INSERT INTO payment (bill_id, amount, pay_date, method, receipt_no, remark) VALUES (?,?,?,?,?,?)",
+                (b["id"], pay, pay_date, "预收抵扣", receipt_no, "使用预收余额抵扣" + ("：" + remark if remark else "")))
+            db.execute("UPDATE bill SET amount_received = amount_received + ? WHERE id=?", (pay, b["id"]))
+            _refresh_bill_status(db, b["id"])
+            balance -= pay
+            offset_total += pay
+            paid_count += 1
+        if offset_total > 0:
+            prepaid_service.add_ledger(
+                db, house_id, -offset_total, method="预收抵扣", op_date=pay_date,
+                remark="预收余额抵扣账单 %s 元" % fmt_money(offset_total),
+                log_detail="%s 用预收余额抵扣账单 %s 元" % (house_label_txt, fmt_money(offset_total)))
+
     log_op(db, "收费", "合并缴清", "%s 合并收款 %s 元，冲抵 %d 笔账单（%s）"
-           % (house_label(house["building_code"], house["unit"], house["room_no"]),
-              fmt_money(total), paid_count, method))
-    return total, paid_count
+           % (house_label_txt, fmt_money(total), paid_count, method))
+    return total, paid_count, excess, offset_total
 
 
 # ---------------------------------------------------------------- 欠费 / 催缴
