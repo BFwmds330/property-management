@@ -104,9 +104,10 @@ def create_app():
     from routes.report import report_bp
     from routes.repair import repair_bp
     from routes.staff import staff_bp
+    from routes.expense import expense_bp
     from routes.system import system_bp
     for bp in (main_bp, community_bp, house_bp, building_bp, htype_bp,
-               resident_bp, fee_bp, report_bp, repair_bp, staff_bp, system_bp):
+               resident_bp, fee_bp, report_bp, repair_bp, staff_bp, expense_bp, system_bp):
         app.register_blueprint(bp)
 
     # ------------------------------------------------ 模板辅助函数 / 过滤器

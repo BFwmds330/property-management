@@ -687,11 +687,37 @@ def main():
     r = c2.get("/staff/salary?year=2026&month=1")
     check("离职员工不出现在批量录入名单", "员测试".encode() not in r.data)
 
+    # ============ 15.8 支出管理 ============
+    print("\n== 支出管理 ==")
+    r = c2.get("/expense")
+    check("支出管理页可打开", r.status_code == 200)
+    r = c2.post("/expense/add", data={"exp_date": "2026-01-31", "category": "公共支出",
+                                      "item": "公共电费 2026-01", "amount": "879.09",
+                                      "remark": "测试"}, follow_redirects=True)
+    check("登记公共支出", "公共电费 2026-01".encode() in r.data)
+    n_exp = db_rows("SELECT COUNT(*) AS n FROM expense WHERE item='公共电费 2026-01'")[0]["n"]
+    check("支出落库", n_exp == 1, str(n_exp))
+    r = c2.post("/expense/add", data={"exp_date": "2026-01-31", "category": "物业支出",
+                                      "item": "大扫把", "amount": "50.00"}, follow_redirects=True)
+    r = c2.get("/expense")
+    check("支出列表显示合计", "929.09".encode() in r.data)
+    r = c2.post("/expense/add", data={"exp_date": "2026-01-31", "category": "物业支出",
+                                      "item": "负数测试", "amount": "-5"}, follow_redirects=False)
+    check("负数金额被拦截", r.status_code == 302)
+    eid = db_rows("SELECT id FROM expense WHERE item='负数测试'")
+    check("负数支出未落库", len(eid) == 0)
+    exp_id = db_rows("SELECT id FROM expense WHERE item='大扫把'")[0]["id"]
+    r = c2.post("/expense/%d/delete" % exp_id, follow_redirects=True)
+    check("删除支出", "大扫把".encode() not in r.data)
+    r = c2.get("/expense/export?year=2026")
+    check("支出 CSV 可导出", r.status_code == 200 and r.data.startswith(b"\xef\xbb\xbf"))
+
     # ============ 16. 所有页面可访问 ============
     print("\n== 所有页面可访问 ==")
     pages = ["/", "/community/list", "/community/add", "/house", "/house/add", "/house/batch",
              "/house/import", "/building", "/house-type", "/resident",
              "/staff", "/staff/add", "/staff/salary", "/staff/social", "/staff/report",
+             "/expense",
              "/staff/import", "/staff/%d" % sid_staff, "/staff/%d/edit" % sid_staff, "/resident/add?house_id=%d&role=member" % hid_main,
              "/fee/items", "/fee/bills", "/fee/generate", "/fee/overdue", "/fee/payments",
              "/report", "/repair", "/settings", "/house/%d" % hid_main,

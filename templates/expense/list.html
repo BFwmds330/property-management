@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}支出管理 - 物业管家{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h5>🧾 支出管理{% if cur %} · {{ cur.name }}{% endif %}</h5>
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('report.report_index') }}">返回报表</a>
+</div>
+
+<div class="card app-card mb-3">
+  <div class="card-header">＋ 登记支出</div>
+  <div class="card-body">
+    <form class="row g-2 align-items-end" method="post" action="{{ url_for('expense.expense_add') }}">
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1">支出日期 <span class="req">＊</span></label>
+        <input class="form-control form-control-sm" type="date" name="exp_date" required>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1">分类 <span class="req">＊</span></label>
+        <select class="form-select form-select-sm" name="category">
+          <option value="物业支出">物业支出</option>
+          <option value="公共支出">公共支出</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1">事由 <span class="req">＊</span></label>
+        <input class="form-control form-control-sm" name="item" required maxlength="100" placeholder="如：公共电费 2026-01">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1">金额（元）<span class="req">＊</span></label>
+        <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="amount" required>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1">备注</label>
+        <input class="form-control form-control-sm" name="remark" maxlength="200">
+      </div>
+      <div class="col-6 col-md-1">
+        <button class="btn btn-success btn-sm w-100">登记</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card app-card mb-3"><div class="card-body py-2">
+  <form class="row g-2 align-items-end">
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">年份</label>
+      <input class="form-control form-control-sm" type="number" name="year" min="2000" max="2100" value="{{ year }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">月份（留空=全年）</label>
+      <input class="form-control form-control-sm" type="number" name="month" min="0" max="12" value="{{ month or '' }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">分类</label>
+      <select class="form-select form-select-sm" name="category">
+        <option value="">全部分类</option>
+        <option value="物业支出" {{ 'selected' if f_category == '物业支出' }}>物业支出</option>
+        <option value="公共支出" {{ 'selected' if f_category == '公共支出' }}>公共支出</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <button class="btn btn-sm btn-success w-100">筛选</button>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="btn btn-sm btn-outline-success w-100" href="{{ url_for('expense.expense_csv', year=year, month=month, category=f_category) }}">⬇ 导出 CSV</a>
+    </div>
+  </form>
+</div></div>
+
+<div class="card app-card">
+  <div class="card-header d-flex justify-content-between">
+    <span>共 {{ rows | length }} 条支出记录</span>
+    <span>物业支出 <b>{{ total['物业支出'] | money }}</b> · 公共支出 <b>{{ total['公共支出'] | money }}</b> ·
+      合计 <b class="text-danger">{{ total['合计'] | money }}</b> 元</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm-fixed mb-0 align-middle">
+        <thead><tr><th>日期</th><th>分类</th><th>事由</th><th class="text-end">金额(元)</th><th>备注</th><th></th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>{{ r.exp_date }}</td>
+            <td><span class="badge {{ 'text-bg-warning' if r.category == '物业支出' else 'text-bg-info' }}">{{ r.category }}</span></td>
+            <td>{{ r.item }}</td>
+            <td class="text-end fw-bold">{{ r.amount | money }}</td>
+            <td class="small text-secondary">{{ r.remark or '—' }}</td>
+            <td>
+              <form class="d-inline" method="post" action="{{ url_for('expense.expense_delete', expense_id=r.id) }}"
+                    data-confirm-title="删除支出" data-confirm="确定删除「{{ r.item }}」{{ r.amount | money }} 元这条支出吗？">
+                <button class="btn btn-sm btn-outline-danger">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-secondary py-4">筛选范围内没有支出记录，用上方表单登记第一笔</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

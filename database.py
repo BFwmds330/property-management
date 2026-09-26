@@ -165,6 +165,19 @@ CREATE TABLE IF NOT EXISTS payment (
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS expense (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    community_id INTEGER NOT NULL REFERENCES community(id) ON DELETE CASCADE,
+    exp_date     TEXT NOT NULL,
+    category     TEXT NOT NULL DEFAULT '物业支出',
+    item         TEXT NOT NULL,
+    amount       INTEGER NOT NULL DEFAULT 0,
+    remark       TEXT DEFAULT '',
+    created_at   TEXT DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_expense_community ON expense(community_id);
+
 CREATE TABLE IF NOT EXISTS staff (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,
