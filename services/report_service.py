@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 
 from database import query_all, query_one, scalar
-from utils import fmt_money, this_month
+from utils import fmt_money, house_label, this_month
 
 LEASE_SOON_DAYS = 30
 BIRTHDAY_SOON_DAYS = 30
@@ -101,7 +101,7 @@ def _upcoming_birthdays(db, community_id, today, days):
             if today <= nb <= end:
                 out.append({
                     "name": r["name"], "date": nb.isoformat(), "phone": r["phone"], "role": r["role"],
-                    "label": "%s栋%d单元%d室" % (str(r["building_code"]).replace("#", ""), r["unit"], r["room_no"]),
+                    "label": house_label(r["building_code"], r["unit"], r["room_no"]),
                 })
                 break
     out.sort(key=lambda x: x["date"])
@@ -161,7 +161,7 @@ def report(db, community_id=0, month="", year=""):
               AND b.status != 'void'
         GROUP BY c.id ORDER BY c.id""", (start, end))]
     for r in top_owed:
-        r["house_label"] = "%s栋%d单元%d室" % (str(r["building_code"]).replace("#", ""), r["unit"], r["room_no"])
+        r["house_label"] = house_label(r["building_code"], r["unit"], r["room_no"])
     return {
         "label": label, "start": start, "end": end,
         "recv_fen": summary["recv"], "got_fen": summary["got"], "cnt": summary["cnt"],

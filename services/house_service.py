@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """楼栋 / 户型 / 房屋管理，含批量生成与产权过户。"""
 from database import log_op, query_all, query_one, scalar
-from utils import (UserError, clean_str, fmt_area, month_add, parse_area,
-                   parse_date, parse_int, HOUSE_STATUS)
+from utils import (UserError, clean_str, fmt_area, house_label as house_label_text,
+                   month_add, parse_area, parse_date, parse_int, HOUSE_STATUS)
 
 # ---------------------------------------------------------------- 楼栋
 
@@ -140,8 +140,8 @@ def house_code(b, unit, room_no):
 
 
 def house_label(b, unit, room_no):
-    """界面显示，如 1栋1单元1501室。"""
-    return "%s栋%d单元%d室" % (str(b["code"]).replace("#", ""), unit, room_no)
+    """界面显示，如 1栋1单元1501室（实现在 utils.house_label，入参为楼栋行）。"""
+    return house_label_text(b["code"], unit, room_no)
 
 
 def list_houses(db, community_id, building_id=0, unit=0, status="", keyword="", only_owed=0):
@@ -357,8 +357,8 @@ def add_vehicle(db, hid, form):
     if scalar(db, "SELECT COUNT(*) FROM vehicle WHERE house_id=? AND plate=?", (hid, plate)) > 0:
         raise UserError("这套房已经登记过车牌 %s 了" % plate)
     db.execute("INSERT INTO vehicle (house_id, plate, remark) VALUES (?,?,?)", (hid, plate, remark))
-    log_op(db, "房屋", "登记车辆", "%s栋%d单元%d室 登记车辆 %s" % (
-        str(house["building_code"]).replace("#", ""), house["unit"], house["room_no"], plate))
+    log_op(db, "房屋", "登记车辆", "%s 登记车辆 %s" % (
+        house_label_text(house["building_code"], house["unit"], house["room_no"]), plate))
 
 
 def delete_vehicle(db, vehicle_id):

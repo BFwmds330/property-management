@@ -5,10 +5,13 @@ import re
 from datetime import date
 
 from database import log_op, query_all, query_one, scalar
-from utils import (UserError, clean_str, fmt_money, months_owed,
+from utils import (UserError, clean_str, fmt_money, house_label, months_owed,
                    parse_amount, parse_date, parse_int, parse_period,
                    period_options, safe_int, today_str, this_month,
                    CYCLE_NAME, PRICING_NAME)
+
+# 列表页每页行数（0 笔账单/流水都按此分页，杜绝旧版"超过 1000 笔静默截断"）
+BILL_PAGE_SIZE = 200
 
 # ---------------------------------------------------------------- 收费项目
 
@@ -167,12 +170,9 @@ def generate_bills(db, community_id, form, is_demo=0):
 
 # ---------------------------------------------------------------- 账单查询
 
-def list_bills(db, community_id, period="", fee_item_id=0, status="", building_id=0, keyword=""):
+def _bill_where(community_id, period="", fee_item_id=0, status="", building_id=0, keyword=""):
+    """账单列表的公共 WHERE 片段（count / 分页查询共用，保证口径一致）。"""
     sql = """
-        SELECT b.*, f.name AS item_name, f.cycle AS item_cycle,
-               h.unit, h.room_no, h.community_id, bd.code AS building_code,
-               r.name AS owner_name,
-               (b.amount_receivable - b.amount_received) AS owed_fen
         FROM bill b
         JOIN fee_item f ON f.id = b.fee_item_id
         JOIN house h ON h.id = b.house_id
@@ -198,10 +198,33 @@ def list_bills(db, community_id, period="", fee_item_id=0, status="", building_i
                       OR b.period LIKE ? OR f.name LIKE ?)"""
         like = f"%{kw}%"
         args += [like, like, like, like]
-    sql += " ORDER BY b.period_start DESC, bd.id, h.unit, h.floor, h.room_no, f.id LIMIT 1000"
+    return sql, args
+
+
+def count_bills(db, community_id, period="", fee_item_id=0, status="", building_id=0, keyword=""):
+    """符合条件的账单总笔数（分页用，不受每页行数限制）。"""
+    where, args = _bill_where(community_id, period, fee_item_id, status, building_id, keyword)
+    return scalar(db, "SELECT COUNT(*)" + where, args)
+
+
+def list_bills(db, community_id, period="", fee_item_id=0, status="", building_id=0, keyword="",
+               page=0, page_size=BILL_PAGE_SIZE):
+    """账单列表。page>0 时按页返回（page_size 行/页）；page=0 返回全部（CSV 导出用）。"""
+    where, args = _bill_where(community_id, period, fee_item_id, status, building_id, keyword)
+    sql = """
+        SELECT b.*, f.name AS item_name, f.cycle AS item_cycle,
+               h.unit, h.room_no, h.community_id, bd.code AS building_code,
+               r.name AS owner_name,
+               (b.amount_receivable - b.amount_received) AS owed_fen
+        """ + where
+    if page:
+        sql += " ORDER BY b.period_start DESC, bd.id, h.unit, h.floor, h.room_no, f.id LIMIT ? OFFSET ?"
+        args = args + [page_size, (page - 1) * page_size]
+    else:
+        sql += " ORDER BY b.period_start DESC, bd.id, h.unit, h.floor, h.room_no, f.id"
     rows = [dict(r) for r in query_all(db, sql, args)]
     for r in rows:
-        r["house_label"] = "%s栋%d单元%d室" % (str(r["building_code"]).replace("#", ""), r["unit"], r["room_no"])
+        r["house_label"] = house_label(r["building_code"], r["unit"], r["room_no"])
     return rows
 
 
@@ -227,7 +250,7 @@ def get_bill_full(db, bill_id):
     if not row:
         raise UserError("没有找到这笔账单，可能已被删除，请刷新页面")
     d = dict(row)
-    d["house_label"] = "%s栋%d单元%d室" % (str(d["building_code"]).replace("#", ""), d["unit"], d["room_no"])
+    d["house_label"] = house_label(d["building_code"], d["unit"], d["room_no"])
     d["payments"] = [dict(p) for p in query_all(
         db, "SELECT * FROM payment WHERE bill_id=? ORDER BY pay_date, id", (bill_id,))]
     d["adjusts"] = [dict(a) for a in query_all(
@@ -367,7 +390,7 @@ def void_bill(db, bill_id):
 
 def pay_all_for_house(db, house_id, form):
     """一次缴清同一房屋的多张账单：按账期从旧到新依次冲抵。"""
-    from services.house_service import get_house_full, house_label
+    from services.house_service import get_house_full
     house = get_house_full(db, house_id)
     bill_ids = form.getlist("bill_ids")
     if not bill_ids:
@@ -411,7 +434,7 @@ def pay_all_for_house(db, house_id, form):
         left -= pay
         paid_count += 1
     log_op(db, "收费", "合并缴清", "%s 合并收款 %s 元，冲抵 %d 笔账单（%s）"
-           % (house_label({"code": house["building_code"]}, house["unit"], house["room_no"]),
+           % (house_label(house["building_code"], house["unit"], house["room_no"]),
               fmt_money(total), paid_count, method))
     return total, paid_count
 
@@ -444,7 +467,7 @@ def overdue_rows(db, community_id, building_id=0, keyword=""):
     sql += " ORDER BY bd.id, h.unit, h.floor, h.room_no, b.period_start"
     rows = [dict(r) for r in query_all(db, sql, args)]
     for r in rows:
-        r["house_label"] = "%s栋%d单元%d室" % (str(r["building_code"]).replace("#", ""), r["unit"], r["room_no"])
+        r["house_label"] = house_label(r["building_code"], r["unit"], r["room_no"])
         r["months"] = months_owed(r["period_start"]) if len(r["period_start"]) == 7 else None
     return rows
 
@@ -462,9 +485,9 @@ def house_overdue_summary(db, house_id):
 
 def reminder_text(db, house_id):
     """生成一段可直接复制发送的催缴提醒短信。"""
-    from services.house_service import get_house_full, house_label
+    from services.house_service import get_house_full
     house = get_house_full(db, house_id)
-    label = house_label({"code": house["building_code"]}, house["unit"], house["room_no"])
+    label = house_label(house["building_code"], house["unit"], house["room_no"])
     bills = house_overdue_summary(db, house_id)
     total = sum(b["owed_fen"] for b in bills)
     owner = house["owner_name"] or "业主"
@@ -480,11 +503,9 @@ def reminder_text(db, house_id):
 
 # ---------------------------------------------------------------- 缴费流水
 
-def payment_records(db, community_id, keyword="", date_from="", date_to="", fee_item_id=0, method=""):
+def _payment_where(community_id, keyword="", date_from="", date_to="", fee_item_id=0, method=""):
+    """缴费流水的公共 WHERE 片段（列表 / 计数 / 合计共用，保证口径一致）。"""
     sql = """
-        SELECT p.*, b.period, f.name AS item_name,
-               h.id AS house_id, h.unit, h.room_no, bd.code AS building_code,
-               r.name AS owner_name
         FROM payment p
         JOIN bill b ON b.id = p.bill_id
         JOIN fee_item f ON f.id = b.fee_item_id
@@ -510,8 +531,31 @@ def payment_records(db, community_id, keyword="", date_from="", date_to="", fee_
     if method:
         sql += " AND p.method = ?"
         args.append(method)
-    sql += " ORDER BY p.pay_date DESC, p.id DESC LIMIT 2000"
+    return sql, args
+
+
+def payment_stats(db, community_id, keyword="", date_from="", date_to="", fee_item_id=0, method=""):
+    """流水全量统计：笔数与合计金额（不随分页截断，页面"合计"以这里为准）。"""
+    where, args = _payment_where(community_id, keyword, date_from, date_to, fee_item_id, method)
+    row = query_one(db, "SELECT COUNT(*) AS cnt, COALESCE(SUM(p.amount),0) AS sum_fen" + where, args)
+    return {"count": row["cnt"], "sum_fen": row["sum_fen"]}
+
+
+def payment_records(db, community_id, keyword="", date_from="", date_to="", fee_item_id=0, method="",
+                    page=0, page_size=BILL_PAGE_SIZE):
+    """缴费流水列表。page>0 时按页返回；page=0 返回全部（CSV 导出用）。"""
+    where, args = _payment_where(community_id, keyword, date_from, date_to, fee_item_id, method)
+    sql = """
+        SELECT p.*, b.period, f.name AS item_name,
+               h.id AS house_id, h.unit, h.room_no, bd.code AS building_code,
+               r.name AS owner_name
+        """ + where
+    if page:
+        sql += " ORDER BY p.pay_date DESC, p.id DESC LIMIT ? OFFSET ?"
+        args = args + [page_size, (page - 1) * page_size]
+    else:
+        sql += " ORDER BY p.pay_date DESC, p.id DESC"
     rows = [dict(r) for r in query_all(db, sql, args)]
     for r in rows:
-        r["house_label"] = "%s栋%d单元%d室" % (str(r["building_code"]).replace("#", ""), r["unit"], r["room_no"])
+        r["house_label"] = house_label(r["building_code"], r["unit"], r["room_no"])
     return rows

@@ -3,7 +3,7 @@
 一键缴清、欠费与催缴短信、缴费流水查询与导出。"""
 from flask import redirect, flash, render_template, request, url_for, Blueprint, jsonify
 
-from routes.helpers import cur_community, need_community, safe
+from routes.helpers import build_pagination, cur_community, need_community, safe
 from services import fee_service, house_service
 from utils import csv_response, safe_int, today_str
 
@@ -112,16 +112,21 @@ def bill_list(db):
     if not cur:
         return need_community()
     args = request.args
-    rows = fee_service.list_bills(
-        db, cur["id"], period=args.get("period", ""),
+    filters = dict(
+        period=args.get("period", ""),
         fee_item_id=safe_int(args.get("fee_item_id")),
         status=args.get("status", ""),
         building_id=safe_int(args.get("building_id")),
         keyword=args.get("keyword", ""))
+    total = fee_service.count_bills(db, cur["id"], **filters)
+    page, pages, page_list, page_url = build_pagination(args, safe_int(args.get("page"), 1),
+                                                        total, fee_service.BILL_PAGE_SIZE)
+    rows = fee_service.list_bills(db, cur["id"], page=page, **filters)
     return render_template(
         "fee/bills.html", rows=rows, periods=fee_service.distinct_periods(db, cur["id"]),
         items=fee_service.list_fee_items(db, cur["id"]),
         buildings=house_service.list_buildings(db, cur["id"]),
+        total=total, page=page, pages=pages, page_list=page_list, page_url=page_url,
         f_period=args.get("period", ""), f_item=args.get("fee_item_id", ""),
         f_status=args.get("status", ""), f_building=args.get("building_id", ""),
         f_keyword=args.get("keyword", ""), active_nav="fee")
@@ -283,14 +288,19 @@ def payments(db):
     if not cur:
         return need_community()
     args = request.args
-    rows = fee_service.payment_records(
-        db, cur["id"], keyword=args.get("keyword", ""),
+    filters = dict(
+        keyword=args.get("keyword", ""),
         date_from=args.get("date_from", ""), date_to=args.get("date_to", ""),
         fee_item_id=safe_int(args.get("fee_item_id")), method=args.get("method", ""))
-    total = sum(r["amount"] for r in rows)
+    # 合计按筛选条件全量统计（不随分页截断）
+    stats = fee_service.payment_stats(db, cur["id"], **filters)
+    page, pages, page_list, page_url = build_pagination(args, safe_int(args.get("page"), 1),
+                                                        stats["count"], fee_service.BILL_PAGE_SIZE)
+    rows = fee_service.payment_records(db, cur["id"], page=page, **filters)
     return render_template(
-        "fee/payments.html", rows=rows, total=total,
+        "fee/payments.html", rows=rows, total=stats["sum_fen"], total_count=stats["count"],
         items=fee_service.list_fee_items(db, cur["id"]),
+        page=page, pages=pages, page_list=page_list, page_url=page_url,
         f_keyword=args.get("keyword", ""), f_from=args.get("date_from", ""),
         f_to=args.get("date_to", ""), f_item=args.get("fee_item_id", ""),
         f_method=args.get("method", ""), active_nav="fee")

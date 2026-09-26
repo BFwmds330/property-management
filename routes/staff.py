@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """人员管理：员工档案、月度工资、社保缴纳、人力成本报表、档案导入。"""
 import json
+from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
@@ -85,8 +86,8 @@ def staff_delete(db, sid):
 @safe
 def salary_batch(db):
     year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False,
-                     default=None) or 2026
-    month = parse_int(request.args.get("month"), "月份", 1, 12, required=False, default=None) or 1
+                     default=None) or date.today().year
+    month = parse_int(request.args.get("month"), "月份", 1, 12, required=False, default=None) or date.today().month
     rows = staff_service.salary_batch_rows(db, year, month)
     existing = sum(1 for r in rows if r["record"])
     return render_template("staff/salary.html", rows=rows, year=year, month=month,
@@ -120,8 +121,8 @@ def salary_delete(db, salary_id):
 @safe
 def social_batch(db):
     year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False,
-                     default=None) or 2026
-    month = parse_int(request.args.get("month"), "月份", 1, 12, required=False, default=None) or 1
+                     default=None) or date.today().year
+    month = parse_int(request.args.get("month"), "月份", 1, 12, required=False, default=None) or date.today().month
     rows = staff_service.social_batch_rows(db, year, month)
     existing = sum(1 for r in rows if r["record"])
     return render_template("staff/social.html", rows=rows, year=year, month=month,
@@ -155,7 +156,7 @@ def social_delete(db, social_id):
 @safe
 def staff_report(db):
     year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False,
-                     default=None) or 2026
+                     default=None) or date.today().year
     department = request.args.get("department", "")
     data = staff_service.yearly_report(db, year, department=department)
     return render_template("staff/report.html", data=data, f_department=department,
@@ -165,7 +166,7 @@ def staff_report(db):
 @staff_bp.route("/staff/report/salary.csv")
 @safe
 def salary_csv(db):
-    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or 2026
+    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or date.today().year
     department = request.args.get("department", "")
     rows = staff_service.salary_month_rows(db, year, 0, department)
     headers = ["姓名", "部门", "职位", "月份", "基本工资(元)", "岗位津贴(元)", "加班费(元)",
@@ -187,7 +188,7 @@ def salary_csv(db):
 @staff_bp.route("/staff/report/social.csv")
 @safe
 def social_csv(db):
-    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or 2026
+    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or date.today().year
     department = request.args.get("department", "")
     rows = staff_service.social_year_rows(db, year, department)
     headers = ["姓名", "部门", "职位", "月份", "缴纳基数(元)", "单位养老(元)", "单位医疗(元)",

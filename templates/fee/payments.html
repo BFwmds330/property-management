@@ -45,8 +45,8 @@
 </div></div>
 
 <div class="card app-card">
-  <div class="card-header d-flex justify-content-between">
-    <span>共 {{ rows | length }} 笔流水</span>
+  <div class="card-header d-flex justify-content-between flex-wrap">
+    <span>共 {{ total_count }} 笔流水{% if pages > 1 %} · 第 {{ page }} / {{ pages }} 页{% endif %}</span>
     <span>合计实收：<b class="text-success">{{ total | money }} 元</b></span>
   </div>
   <div class="card-body p-0">
@@ -76,5 +76,22 @@
       </table>
     </div>
   </div>
+  {% if pages > 1 %}
+  <div class="card-body py-2 border-top">
+    <nav><ul class="pagination pagination-sm justify-content-center mb-0">
+      <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" href="{{ page_url(1) }}">«</a></li>
+      <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" href="{{ page_url(page - 1 if page > 1 else 1) }}">‹</a></li>
+      {% for p in page_list %}
+      {% if p %}
+      <li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="{{ page_url(p) }}">{{ p }}</a></li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+      {% endfor %}
+      <li class="page-item {% if page >= pages %}disabled{% endif %}"><a class="page-link" href="{{ page_url(page + 1 if page < pages else pages) }}">›</a></li>
+      <li class="page-item {% if page >= pages %}disabled{% endif %}"><a class="page-link" href="{{ page_url(pages) }}">»</a></li>
+    </ul></nav>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

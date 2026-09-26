@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 
 from config import AUTO_BACKUP_KEEP, BACKUP_DIR, DB_PATH
 from database import ensure_schema, log_op, open_db, query_all, query_one, scalar
-from utils import UserError, clean_str, parse_int
+from utils import UserError, clean_str, house_label, parse_int
 
 REQUIRED_TABLES = {"community", "building", "house_type", "house", "resident",
                    "resident_house", "fee_item", "bill", "payment", "operation_log"}
@@ -176,8 +176,7 @@ def list_repairs(db, community_id, status=""):
     rows = [dict(r) for r in query_all(db, sql, args)]
     for r in rows:
         if r["house_id"]:
-            r["house_label"] = "%s栋%d单元%d室" % (
-                str(r["building_code"]).replace("#", ""), r["unit"], r["room_no"])
+            r["house_label"] = house_label(r["building_code"], r["unit"], r["room_no"])
         else:
             r["house_label"] = "（未指定房屋）"
     return rows
