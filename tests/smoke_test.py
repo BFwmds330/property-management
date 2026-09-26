@@ -21,6 +21,7 @@ _TMP = tempfile.mkdtemp(prefix="wuye_test_")
 config.DATA_DIR = _TMP
 config.BACKUP_DIR = os.path.join(_TMP, "backups")
 config.DB_PATH = os.path.join(_TMP, "test.db")
+config.UPLOAD_DIR = os.path.join(_TMP, "uploads")   # 否则会指向真实 data/uploads，测试照片写进真实数据目录
 
 import database
 database.DB_PATH = config.DB_PATH
