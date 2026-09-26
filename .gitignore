@@ -17,3 +17,8 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+
+# 文档/代码的临时备份文件
+*.bak
+*.bak-*
+*.orig
