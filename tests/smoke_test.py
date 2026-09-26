@@ -712,6 +712,31 @@ def main():
     r = c2.get("/expense/export?year=2026")
     check("支出 CSV 可导出", r.status_code == 200 and r.data.startswith(b"\xef\xbb\xbf"))
 
+    # ============ 15.9 编辑账期 ============
+    print("\n== 编辑账期 ==")
+    bid_ep = db_rows("""SELECT b.id, b.period FROM bill b
+        WHERE b.status='paid' LIMIT 1""")
+    if bid_ep:
+        old_p = bid_ep[0]["period"]
+        r = c2.post("/fee/bill/%d/edit-period" % bid_ep[0]["id"],
+                    data={"new_period": old_p}, follow_redirects=True)
+        check("相同账期提交被撞期拦截", "不能重复".encode() in r.data)
+        r = c2.post("/fee/bill/%d/edit-period" % bid_ep[0]["id"],
+                    data={"new_period": "2021.7-2021.12.31"}, follow_redirects=True)
+        check("非法格式被拒绝", "格式不正确".encode() in r.data)
+        r = c2.post("/fee/bill/%d/edit-period" % bid_ep[0]["id"],
+                    data={"new_period": "2021.8-2021.12"}, follow_redirects=True)
+        check("账期修改成功", "账期已修改".encode() in r.data)
+        row = db_rows("SELECT period, period_start, months FROM bill WHERE id=?", (bid_ep[0]["id"],))[0]
+        check("账期/起始/月数已更新", row["period"] == "2021.8-2021.12"
+              and row["period_start"] == "2021-08" and row["months"] == 5,
+              str(dict(row)))
+        r = c2.post("/fee/bill/%d/edit-period" % bid_ep[0]["id"],
+                    data={"new_period": old_p}, follow_redirects=True)
+        check("账期改回原值（恢复现场）", "账期已修改".encode() in r.data)
+    else:
+        check("编辑账期（无自定义账期可测，跳过）", True)
+
     # ============ 16. 所有页面可访问 ============
     print("\n== 所有页面可访问 ==")
     pages = ["/", "/community/list", "/community/add", "/house", "/house/add", "/house/batch",
