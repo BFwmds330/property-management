@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """住户管理：业主 / 家庭成员 / 租户，以房屋为锚点登记，含历史轨迹与通讯录导出。"""
 from database import log_op, query_all, query_one, scalar
-from utils import (UserError, ROLE, clean_str, fmt_money, parse_date,
+from utils import (UserError, ROLE, clean_str, fmt_money, house_label, parse_date,
                    parse_idcard, parse_int, parse_phone)
 
 
@@ -45,7 +45,7 @@ def _check_current_owner_unique(db, house_id, exclude_link=None):
 
 def add_resident_to_house(db, house_id, form):
     """在某套房屋下登记业主/家庭成员/租户。"""
-    from services.house_service import get_house_full, house_label
+    from services.house_service import get_house_full
     house = get_house_full(db, house_id)
     role = form.get("role")
     if role not in ROLE:
@@ -79,7 +79,7 @@ def add_resident_to_house(db, house_id, form):
     if role == "owner" and not house["owner_resident_id"]:
         db.execute("UPDATE house SET owner_resident_id=? WHERE id=?", (rid, house_id))
     log_op(db, "住户", "登记住户", "%s 登记%s「%s」" % (
-        house_label({"code": house["building_code"]}, house["unit"], house["room_no"]),
+        house_label(house["building_code"], house["unit"], house["room_no"]),
         ROLE[role], person["name"]))
     return rid
 
@@ -91,7 +91,7 @@ def parse_amount_rent(value):
 
 def update_resident(db, rid, link_id, form):
     """编辑住户个人信息 + 登记信息。"""
-    from services.house_service import get_house_full, house_label
+    from services.house_service import get_house_full
     person = _person_fields(db, form)
     db.execute(
         """UPDATE resident SET name=?, gender=?, birth_date=?, id_number=?, phone=?,
@@ -117,13 +117,13 @@ def update_resident(db, rid, link_id, form):
         (relation, is_living, start_date, lease_start, lease_end, monthly_rent, link_id))
     house = get_house_full(db, link["house_id"])
     log_op(db, "住户", "修改住户", "%s 修改%s「%s」信息" % (
-        house_label({"code": house["building_code"]}, house["unit"], house["room_no"]),
+        house_label(house["building_code"], house["unit"], house["room_no"]),
         ROLE[link["role"]], person["name"]))
 
 
 def move_out(db, link_id):
     """住户搬出/退租：登记记录转历史，人保留（也许还住在别处）。"""
-    from services.house_service import get_house_full, house_label
+    from services.house_service import get_house_full
     link = get_link(db, link_id)
     if link["role"] == "owner":
         raise UserError("业主不能直接移出，请使用房屋页面的“产权过户”功能更换业主")
@@ -132,7 +132,7 @@ def move_out(db, link_id):
     from utils import today_str
     db.execute("UPDATE resident_house SET is_current=0, end_date=? WHERE id=?", (today_str(), link_id))
     log_op(db, "住户", "住户搬出", "%s %s「%s」搬出，转为历史住户" % (
-        house_label({"code": house["building_code"]}, house["unit"], house["room_no"]),
+        house_label(house["building_code"], house["unit"], house["room_no"]),
         ROLE[link["role"]], person["name"]))
 
 
@@ -198,7 +198,7 @@ def export_contacts(db, community_id):
                "工作单位", "紧急联系人", "紧急联系人电话", "租期开始", "租期结束", "月租金(元)"]
     out = []
     for r in rows:
-        label = "%s栋%d单元%d室" % (str(r["building_code"]).replace("#", ""), r["unit"], r["room_no"])
+        label = house_label(r["building_code"], r["unit"], r["room_no"])
         out.append([
             label, ROLE.get(r["role"], r["role"]), r["name"], r["gender"], r["phone"],
             r["id_number"], r["relation"], "是" if r["is_living"] else "否", r["work_unit"],

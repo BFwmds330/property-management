@@ -177,6 +177,11 @@ def parse_date(value, field="日期", required=False):
     return s
 
 
+def house_label(code, unit, room_no):
+    """房号的界面显示，如 1栋1单元1501室（楼栋编号里的 # 不参与显示）。"""
+    return "%s栋%d单元%d室" % (str(code).replace("#", ""), unit, room_no)
+
+
 def today_str():
     return date.today().strftime("%Y-%m-%d")
 

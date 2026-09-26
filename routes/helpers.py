@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""路由层的公共小工具：安全包装、当前小区。"""
+"""路由层的公共小工具：安全包装、当前小区、分页。"""
+import math
 import traceback
 from functools import wraps
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 from flask import flash, g, redirect, request, session, url_for
 
@@ -60,3 +61,31 @@ def safe(fn):
                   "如果反复出现，请联系开发者（设置页有日志说明）", "danger")
             return _back()
     return wrapper
+
+
+def build_pagination(request_args, page, total, page_size):
+    """列表页分页参数：页码修正、总页数、页码按钮列表、翻页链接。
+
+    返回 (page, pages, page_list, page_url)。page_list 里的 0 表示"…"省略号；
+    page_url 是一个 (页码 -> 链接) 的函数，自动保留当前所有筛选参数。
+    """
+    pages = max(1, math.ceil(total / page_size)) if total else 1
+    page = min(max(1, page), pages)
+    qs = urlencode({k: v for k, v in request_args.items()
+                    if k != "page" and str(v).strip() != ""})
+
+    def page_url(p):
+        return ("?" + qs + "&" if qs else "?") + "page=%d" % p
+
+    if pages <= 7:
+        page_list = list(range(1, pages + 1))
+    else:
+        page_list = [1]
+        lo, hi = max(2, page - 2), min(pages - 1, page + 2)
+        if lo > 2:
+            page_list.append(0)
+        page_list += list(range(lo, hi + 1))
+        if hi < pages - 1:
+            page_list.append(0)
+        page_list.append(pages)
+    return page, pages, page_list, page_url

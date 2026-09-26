@@ -276,6 +276,8 @@ CREATE TABLE IF NOT EXISTS app_meta (
 
 CREATE INDEX IF NOT EXISTS idx_house_community ON house(community_id);
 CREATE INDEX IF NOT EXISTS idx_bill_house ON bill(house_id);
+CREATE INDEX IF NOT EXISTS idx_bill_period_start ON bill(period_start);
+CREATE INDEX IF NOT EXISTS idx_payment_bill ON payment(bill_id);
 CREATE INDEX IF NOT EXISTS idx_rh_house ON resident_house(house_id);
 CREATE INDEX IF NOT EXISTS idx_rh_resident ON resident_house(resident_id);
 """

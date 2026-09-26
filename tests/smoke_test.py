@@ -756,6 +756,80 @@ def main():
             print("    💥 %s -> %d" % (p, r.status_code))
     check("全部 %d 个页面返回 200" % len(pages), ok)
 
+    # ============ 18. v2.2.0：账单分页 / 启动密码 / 局域网开关 ============
+    print("\n== 账单分页与全量合计 ==")
+    from services import fee_service as fs22
+    con_p = sqlite3.connect(config.DB_PATH)
+    con_p.row_factory = sqlite3.Row
+    try:
+        total_b = fs22.count_bills(con_p, 1)
+        p1 = fs22.list_bills(con_p, 1, page=1, page_size=5)
+        p2 = fs22.list_bills(con_p, 1, page=2, page_size=5)
+        check("账单分页：count 与每页行数一致", total_b > 0 and len(p1) == 5,
+              "总数 %d / 第1页 %d 行" % (total_b, len(p1)))
+        check("账单分页：两页无重复、并集连续", len({r["id"] for r in p1} | {r["id"] for r in p2}) == 10)
+        stats = fs22.payment_stats(con_p, 1)
+        sql_sum = con_p.execute("""SELECT COALESCE(SUM(p.amount),0) FROM payment p
+            JOIN bill b ON b.id=p.bill_id JOIN house h ON h.id=b.house_id
+            WHERE h.community_id=1""").fetchone()[0]
+        check("流水全量合计与 SQL SUM 一致（不随分页截断）", stats["sum_fen"] == sql_sum,
+              "%s / %s" % (stats["sum_fen"], sql_sum))
+        stats_kw = fs22.payment_stats(con_p, 1, keyword="不存在xyz")
+        check("流水统计支持筛选条件", stats_kw["count"] == 0 and stats_kw["sum_fen"] == 0)
+    finally:
+        con_p.close()
+    r = c2.get("/fee/bills?page=1")
+    check("账单页显示总数与页码", r.status_code == 200 and ("共 %d 笔账单" % total_b).encode() in r.data)
+    r = c2.get("/fee/bills?page=999")
+    check("账单页超范围页码自动收敛不崩溃", r.status_code == 200)
+    r = c2.get("/fee/payments?page=1")
+    check("流水页显示全量笔数与合计", r.status_code == 200 and "共 4 笔流水".encode() in r.data
+          and "455.00".encode() in r.data)
+    r = c2.get("/fee/payments/export")
+    check("流水 CSV 导出仍为全量", r.status_code == 200 and r.data.startswith(b"\xef\xbb\xbf"))
+
+    print("\n== 会话安全与索引 ==")
+    check("会话 Cookie 显式 SameSite=Lax", app.config.get("SESSION_COOKIE_SAMESITE") == "Lax")
+    idx_names = {r["name"] for r in db_rows("SELECT name FROM sqlite_master WHERE type='index'")}
+    check("报表/流水索引已建立", {"idx_bill_period_start", "idx_payment_bill"} <= idx_names)
+    import utils as _u22
+    check("house_label 工具函数（含 # 清理）",
+          _u22.house_label("1#", 1, 1501) == "1栋1单元1501室"
+          and _u22.house_label("9", 2, 804) == "9栋2单元804室")
+
+    print("\n== 启动密码（WUYE_PIN）==")
+    os.environ["WUYE_PIN"] = "2468"
+    app_pin = create_app()
+    check("启用后实例持有 4 位密码", app_pin.config.get("STARTUP_PIN") == "2468")
+    cpin = app_pin.test_client()
+    r = cpin.get("/")
+    check("未验证前访问首页被拦截到验证页",
+          r.status_code == 302 and "/pin" in r.headers.get("Location", ""),
+          "%s %s" % (r.status_code, r.headers.get("Location")))
+    r = cpin.get("/pin")
+    check("密码验证页可打开", r.status_code == 200 and "4 位数字".encode() in r.data)
+    r = cpin.post("/pin", data={"code": "1111", "next": "/"})
+    check("错误密码提示不通过", r.status_code == 200 and "密码不正确".encode() in r.data)
+    r = cpin.get("/")
+    check("错误密码后仍被拦截", r.status_code == 302 and "/pin" in r.headers.get("Location", ""))
+    r = cpin.post("/pin", data={"code": "2468", "next": "/"}, follow_redirects=True)
+    check("正确密码后进入系统", r.status_code == 200 and "阳光花园".encode() in r.data)
+    r = cpin.get("/house")
+    check("验证通过后会话内不再询问", r.status_code == 200)
+    os.environ.pop("WUYE_PIN", None)
+    app_nopin = create_app()
+    check("未设置 WUYE_PIN 的新实例无密码", app_nopin.config.get("STARTUP_PIN") is None)
+    r = app_nopin.test_client().get("/pin", follow_redirects=False)
+    check("无密码时 /pin 直接跳回首页", r.status_code == 302)
+    check("已启动实例不受环境变量变化影响", app_pin.config.get("STARTUP_PIN") == "2468")
+
+    print("\n== 局域网开关 ==")
+    from app import _bind_host
+    os.environ["WUYE_LAN"] = "1"
+    check("WUYE_LAN=1 时对局域网开放", _bind_host() == "0.0.0.0")
+    os.environ.pop("WUYE_LAN", None)
+    check("默认仅本机可访问", _bind_host() == "127.0.0.1")
+
     print("\n" + "=" * 50)
     print("通过 %d 项检查，失败 %d 项" % (PASS, len(FAIL)))
     for name, detail in FAIL:

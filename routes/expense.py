@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """支出管理：物业支出 / 公共支出登记与汇总。"""
+from datetime import date
+
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from database import get_db
@@ -9,6 +11,9 @@ from utils import csv_response, parse_int
 
 expense_bp = Blueprint("expense", __name__)
 
+# 默认年份跟随当前日期，避免跨年后默认视图停在旧年
+CUR_YEAR = date.today().year
+
 
 @expense_bp.route("/expense")
 @safe
@@ -16,7 +21,7 @@ def expense_list(db):
     cur = cur_community(db)
     if not cur:
         return need_community()
-    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or 2026
+    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or CUR_YEAR
     month = parse_int(request.args.get("month"), "月份", 0, 12, required=False, default=None) or 0
     category = request.args.get("category", "")
     rows = expense_service.list_expenses(db, cur["id"], year=year, month=month, category=category)
@@ -53,7 +58,7 @@ def expense_csv(db):
     cur = cur_community(db)
     if not cur:
         return need_community()
-    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or 2026
+    year = parse_int(request.args.get("year"), "年份", 2000, 2100, required=False, default=None) or CUR_YEAR
     month = parse_int(request.args.get("month"), "月份", 0, 12, required=False, default=None) or 0
     category = request.args.get("category", "")
     rows = expense_service.list_expenses(db, cur["id"], year=year, month=month, category=category)

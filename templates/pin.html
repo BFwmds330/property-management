@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>访问验证 - 物业管家</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="bg-light">
+<div class="container" style="max-width: 380px;">
+  <div class="card app-card mt-5">
+    <div class="card-body p-4 text-center">
+      <h5 class="mb-1">🔐 物业管家{% if edition %}（{{ edition }}）{% endif %}</h5>
+      <p class="text-secondary small mb-4">本系统已开启访问密码，请输入启动窗口里显示的 4 位数字密码</p>
+      {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+      <form method="post" action="{{ url_for('pin_page') }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <input class="form-control form-control-lg text-center mb-3" style="letter-spacing: 1em"
+               name="code" inputmode="numeric" pattern="\d{4}" maxlength="4"
+               placeholder="····" autofocus autocomplete="off" required>
+        <button class="btn btn-success w-100">进入系统</button>
+      </form>
+    </div>
+  </div>
+  <p class="text-center text-secondary small mt-3">v{{ version }}{% if edition %} · {{ edition }}{% endif %}</p>
+</div>
+</body>
+</html>
