@@ -69,8 +69,12 @@ def generate_form(db):
     if not cur:
         return need_community()
     items = fee_service.list_fee_items(db, cur["id"], include_disabled=False)
+    houses_by_building = {}
+    for h in house_service.list_houses(db, cur["id"]):
+        houses_by_building.setdefault(h["building_id"], []).append(h)
     return render_template("fee/generate.html", items=items,
                            buildings=house_service.list_buildings(db, cur["id"]),
+                           houses_by_building=houses_by_building,
                            active_nav="fee")
 
 
@@ -83,10 +87,18 @@ def generate_post(db):
     args = request.form
     preview = fee_service.generate_preview(
         db, cur["id"], safe_int(args.get("fee_item_id")), args.get("period"),
-        safe_int(args.get("building_id")), args.get("status_scope", "all"))
+        args.get("building_id", ""), args.get("status_scope", "all"),
+        house_ids=args.getlist("house_ids"))
+    if preview["count"] == 0:
+        raise UserError("没有需要生成的房屋（所选范围内都已生成过这个账期的账单；"
+                        "指定户模式下请至少勾选一户）")
     items = fee_service.list_fee_items(db, cur["id"], include_disabled=False)
+    houses_by_building = {}
+    for h in house_service.list_houses(db, cur["id"]):
+        houses_by_building.setdefault(h["building_id"], []).append(h)
     return render_template("fee/generate.html", items=items,
                            buildings=house_service.list_buildings(db, cur["id"]),
+                           houses_by_building=houses_by_building,
                            preview=preview, form=args, active_nav="fee")
 
 

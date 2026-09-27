@@ -112,9 +112,10 @@ CREATE TABLE IF NOT EXISTS fee_item (
     unit_price    INTEGER DEFAULT 0,
     cycle         TEXT DEFAULT 'month',
     enabled       INTEGER DEFAULT 1,
-    remark        TEXT DEFAULT '',
-    UNIQUE(community_id, name)
+    remark        TEXT DEFAULT ''
 );
+-- v2.5.0：允许同一小区出现同名收费项目（如两档"物业费"单价不同），
+-- "每户同账期同名账单唯一"由应用层在生成/改账期两个入口按项目名强制保证。
 
 CREATE TABLE IF NOT EXISTS vehicle (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -348,6 +349,35 @@ def _migrate(db):
     rcols = {r[1] for r in db.execute("PRAGMA table_info(repair)")}
     if "photo_path" not in rcols:
         db.execute("ALTER TABLE repair ADD COLUMN photo_path TEXT DEFAULT ''")
+    _migrate_fee_item_allow_dup_names(db)
+
+
+def _migrate_fee_item_allow_dup_names(db):
+    """v2.5.0：老库的 fee_item 带 UNIQUE(community_id, name)，不允许同名项目。
+    检测到旧结构时重建为无约束版本（数据原样搬过去，id/外键引用不变）。"""
+    row = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='fee_item'").fetchone()
+    if not row or "UNIQUE" not in (row[0] or "").upper():
+        return
+    db.execute("PRAGMA foreign_keys=OFF")
+    try:
+        db.executescript("""
+CREATE TABLE fee_item_new (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    community_id  INTEGER NOT NULL REFERENCES community(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    pricing_mode  TEXT DEFAULT 'area',
+    unit_price    INTEGER DEFAULT 0,
+    cycle         TEXT DEFAULT 'month',
+    enabled       INTEGER DEFAULT 1,
+    remark        TEXT DEFAULT ''
+);
+INSERT INTO fee_item_new (id, community_id, name, pricing_mode, unit_price, cycle, enabled, remark)
+    SELECT id, community_id, name, pricing_mode, unit_price, cycle, enabled, remark FROM fee_item;
+DROP TABLE fee_item;
+ALTER TABLE fee_item_new RENAME TO fee_item;
+""")
+    finally:
+        db.execute("PRAGMA foreign_keys=ON")
 
 
 def ensure_schema(db):
