@@ -128,6 +128,16 @@ def generate_preview(db, community_id, fee_item_id, period_value, building_id=0,
         amt = compute_bill_amount(fee_item, h)
         total += amt
         lines.append({"house": h, "amount_fen": amt})
+    # v2.6.0：给每户带上名下车辆（预览页可为停车费类账单选择关联车牌）
+    if lines:
+        hid_list = [l["house"]["id"] for l in lines]
+        marks = ",".join("?" for _ in hid_list)
+        veh = {}
+        for v in query_all(db, "SELECT id, house_id, plate FROM vehicle WHERE house_id IN (%s) ORDER BY id" % marks,
+                           hid_list):
+            veh.setdefault(v["house_id"], []).append({"id": v["id"], "plate": v["plate"]})
+        for l in lines:
+            l["house"]["vehicles"] = veh.get(l["house"]["id"], [])
     return {
         "fee_item": dict(fee_item),
         "period": period, "period_start": period_start, "months": months,
@@ -180,17 +190,29 @@ def generate_bills(db, community_id, form, is_demo=0):
     if preview["count"] == 0:
         raise UserError("没有需要生成的房屋（所选范围内都已生成过这个账期的账单）")
     fee_item = preview["fee_item"]
+    linked = 0
     for line in preview["lines"]:
+        # v2.6.0：可按户选择关联车辆（停车费类账单），校验车辆确实属于该房屋
+        vehicle_id = None
+        raw_vid = safe_int(form.get("vehicle_for_%d" % line["house"]["id"]))
+        if raw_vid:
+            vrow = query_one(db, "SELECT house_id, plate FROM vehicle WHERE id=?", (raw_vid,))
+            if not vrow or vrow["house_id"] != line["house"]["id"]:
+                raise UserError("勾选的关联车辆与房屋不匹配（车牌 %s），请刷新页面后重试"
+                                % (vrow["plate"] if vrow else "#%d" % raw_vid))
+            vehicle_id = raw_vid
+            linked += 1
         cur = db.execute(
-            """INSERT INTO bill (house_id, fee_item_id, period, period_start, months, amount_receivable)
-               VALUES (?,?,?,?,?,?)""",
+            """INSERT INTO bill (house_id, fee_item_id, period, period_start, months, amount_receivable, vehicle_id)
+               VALUES (?,?,?,?,?,?,?)""",
             (line["house"]["id"], fee_item["id"], preview["period"], preview["period_start"],
-             preview["months"], line["amount_fen"]))
+             preview["months"], line["amount_fen"], vehicle_id))
         # 生成即按公式定状态：单价为 0（免收）时直接是已缴清，不产生"欠费 0 元"的杂音
         _refresh_bill_status(db, cur.lastrowid)
     log_op(db, "收费", "生成账单",
-           "「%s」账期 %s：生成 %d 笔账单，应收合计 %s 元"
-           % (fee_item["name"], preview["period"], preview["count"], fmt_money(preview["total_fen"])), is_demo)
+           "「%s」账期 %s：生成 %d 笔账单，应收合计 %s 元%s"
+           % (fee_item["name"], preview["period"], preview["count"], fmt_money(preview["total_fen"]),
+              "，其中 %d 笔关联车辆" % linked if linked else ""), is_demo)
     return preview["count"], preview["total_fen"], 0
 
 

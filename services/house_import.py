@@ -298,10 +298,9 @@ def execute_import(db, community_id, records):
                 db.execute("UPDATE house SET status='rent' WHERE id=? AND status IN ('vacant','self')",
                            (hid,))
                 created["tenants"] += 1
-        # 车辆
+        # 车辆（v2.6.0：车牌全局查重——同车牌已登记在任意房屋时跳过，避免重复）
         for v in r["vehicles"]:
-            exists = scalar(db, "SELECT COUNT(*) FROM vehicle WHERE house_id=? AND plate=?",
-                            (hid, v["plate"]))
+            exists = scalar(db, "SELECT COUNT(*) FROM vehicle WHERE plate=?", (v["plate"],))
             if not exists:
                 db.execute("INSERT INTO vehicle (house_id, plate, remark) VALUES (?,?,?)",
                            (hid, v["plate"], v["remark"]))

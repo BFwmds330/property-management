@@ -95,9 +95,13 @@
       <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">将生成</span><b>{{ preview.count }}</b> 户账单{% if preview.zero_count %}<span class="text-warning-emphasis">（含 {{ preview.zero_count }} 户面积为 0，金额为 0，请补面积后重算）</span>{% endif %}</div></div>
       <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">应收合计</span><b class="text-danger fs-5">¥{{ preview.total_fen | money }}</b></div></div>
     </div>
+    <form method="post" action="{{ url_for('fee.generate_confirm') }}">
     <div class="table-responsive" style="max-height:320px">
       <table class="table table-sm table-hover table-sm-fixed mb-0">
-        <thead><tr><th>房号</th><th>业主</th><th>面积(㎡)</th><th class="text-end">应收(元)</th></tr></thead>
+        <thead><tr>
+          <th>房号</th><th>业主</th><th>面积(㎡)</th><th class="text-end">应收(元)</th>
+          {% if preview.fee_item.pricing_mode == 'fixed' %}<th>关联车辆（可选）</th>{% endif %}
+        </tr></thead>
         <tbody>
           {% for line in preview.lines %}
           <tr>
@@ -105,12 +109,24 @@
             <td>{{ line.house.owner_name or '—' }}</td>
             <td>{{ line.house.area_100 | area }}</td>
             <td class="text-end">{{ line.amount_fen | money }}</td>
+            {% if preview.fee_item.pricing_mode == 'fixed' %}
+            <td>
+              {% if line.house.vehicles %}
+              <select class="form-select form-select-sm" name="vehicle_for_{{ line.house.id }}" style="max-width:180px">
+                <option value="">不关联</option>
+                {% for car in line.house.vehicles %}
+                <option value="{{ car.id }}">{{ car.plate }}</option>
+                {% endfor %}
+              </select>
+              {% else %}<span class="text-secondary small">该户无车辆登记</span>{% endif %}
+            </td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <form method="post" action="{{ url_for('fee.generate_confirm') }}" class="mt-3 d-flex gap-2">
+    <div class="mt-3 d-flex gap-2">
       <input type="hidden" name="fee_item_id" value="{{ preview.fee_item.id }}">
       <input type="hidden" name="period" value="{{ preview.period }}">
       <input type="hidden" name="building_id" value="{{ form.building_id or 0 }}">
@@ -122,6 +138,7 @@
               data-confirm-title="确认生成账单"
               data-confirm="将为 <b>{{ preview.count }}</b> 户生成「{{ preview.fee_item.name }}」账期 <b>{{ preview.period }}</b> 的账单，应收合计 <b>¥{{ preview.total_fen | money }}</b>。<br>确定生成吗？">✅ 确认生成</button>
       <a class="btn btn-outline-secondary" href="{{ url_for('fee.generate_form') }}">重新选择</a>
+    </div>
     </form>
   </div>
 </div>
