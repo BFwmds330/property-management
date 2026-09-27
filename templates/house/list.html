@@ -5,6 +5,7 @@
   <h5>🏢 房屋管理{% if cur %} · {{ cur.name }}{% endif %}</h5>
   <div class="d-flex gap-2 flex-wrap">
     <a class="btn btn-outline-success" href="{{ url_for('house.house_batch') }}">⚡ 批量生成整栋房屋</a>
+    <a class="btn btn-outline-success" href="{{ url_for('house.vehicle_search') }}">🚗 车辆清单</a>
     <a class="btn btn-success" href="{{ url_for('house.house_add') }}">＋ 新增房屋</a>
   </div>
 </div>

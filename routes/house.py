@@ -5,7 +5,7 @@ import json
 from flask import (Blueprint, abort, flash, redirect, render_template, request,
                    session, url_for)
 
-from routes.helpers import cur_community, need_community, safe
+from routes.helpers import build_pagination, cur_community, need_community, safe
 from services import house_service, house_import, prepaid_service, resident_service
 from utils import csv_response, safe_int
 
@@ -223,6 +223,48 @@ def vehicle_delete(db, vid):
     from flask import flash
     flash("车辆登记已删除", "success")
     return redirect(request.referrer or url_for("house.house_list"))
+
+
+# ---------------------------------------------------------------- 车辆搜索（v2.6.0）
+
+@house_bp.route("/house/vehicles")
+@safe
+def vehicle_search(db):
+    """全小区车辆清单：按车牌/业主/房号搜索，附停车费缴至。"""
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    args = request.args
+    filters = dict(keyword=args.get("keyword", ""),
+                   building_id=safe_int(args.get("building_id")))
+    total = house_service.count_vehicles(db, cur["id"], **filters)
+    page, pages, page_list, page_url = build_pagination(args, safe_int(args.get("page"), 1),
+                                                        total, house_service.VEHICLE_PAGE_SIZE)
+    rows = house_service.search_vehicles(db, cur["id"], page=page, **filters)
+    return render_template("house/vehicles.html", rows=rows, total=total,
+                           page=page, pages=pages, page_list=page_list, page_url=page_url,
+                           buildings=house_service.list_buildings(db, cur["id"]),
+                           f_keyword=args.get("keyword", ""),
+                           f_building=args.get("building_id", ""),
+                           active_nav="house")
+
+
+@house_bp.route("/house/vehicles/export")
+@safe
+def vehicles_export(db):
+    """车辆清单 CSV 导出（当前筛选条件，全量）。"""
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    args = request.args
+    rows = house_service.search_vehicles(
+        db, cur["id"], keyword=args.get("keyword", ""),
+        building_id=safe_int(args.get("building_id")))
+    headers = ["车牌号", "房号", "业主", "业主电话", "房屋车位号", "车辆备注（车位/租期）", "停车费缴至", "登记时间"]
+    out = [[r["plate"], r["house_label"], r["owner_name"] or "", r["owner_phone"] or "",
+            r["parking_no"] or "", r["vehicle_remark"] or "", r["paid_until"] or "",
+            (r["created_at"] or "")[:10]] for r in rows]
+    return csv_response("车辆清单.csv", headers, out)
 
 
 # ---------------------------------------------------------------- 名册导入

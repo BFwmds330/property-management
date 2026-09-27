@@ -354,8 +354,18 @@ def add_vehicle(db, hid, form):
     house = get_house_full(db, hid)
     plate = clean_str(form.get("plate"), "车牌号", 20, required=True)
     remark = clean_str(form.get("vehicle_remark"), "车辆备注", 200)
-    if scalar(db, "SELECT COUNT(*) FROM vehicle WHERE house_id=? AND plate=?", (hid, plate)) > 0:
-        raise UserError("这套房已经登记过车牌 %s 了" % plate)
+    # v2.6.0：车牌全局查重（跨房屋/跨小区都不允许重复登记），报错时告知现有位置
+    dup = query_one(db, """
+        SELECT v.house_id, bd.code AS building_code, h.unit, h.room_no, r.name AS owner_name
+        FROM vehicle v
+        JOIN house h ON h.id = v.house_id
+        JOIN building bd ON bd.id = h.building_id
+        LEFT JOIN resident r ON r.id = h.owner_resident_id
+        WHERE v.plate = ?""", (plate,))
+    if dup:
+        where = house_label_text(dup["building_code"], dup["unit"], dup["room_no"])
+        owner = ("，业主 %s" % dup["owner_name"]) if dup["owner_name"] else ""
+        raise UserError("车牌 %s 已登记在 %s%s，全系统车牌不能重复登记；如需转移请先删除原登记" % (plate, where, owner))
     db.execute("INSERT INTO vehicle (house_id, plate, remark) VALUES (?,?,?)", (hid, plate, remark))
     log_op(db, "房屋", "登记车辆", "%s 登记车辆 %s" % (
         house_label_text(house["building_code"], house["unit"], house["room_no"]), plate))
@@ -367,6 +377,72 @@ def delete_vehicle(db, vehicle_id):
         raise UserError("没有找到这辆车，可能已被删除，请刷新页面")
     db.execute("DELETE FROM vehicle WHERE id=?", (vehicle_id,))
     log_op(db, "房屋", "删除车辆", "删除车辆登记 %s（房屋 #%d）" % (row["plate"], row["house_id"]))
+
+
+# ---------------------------------------------------------------- 车辆搜索（v2.6.0）
+
+VEHICLE_PAGE_SIZE = 200
+
+
+def _vehicle_where(community_id, keyword="", building_id=0):
+    sql = """
+        FROM vehicle v
+        JOIN house h ON h.id = v.house_id
+        JOIN building bd ON bd.id = h.building_id
+        LEFT JOIN resident r ON r.id = h.owner_resident_id
+        WHERE h.community_id = ?"""
+    args = [community_id]
+    kw = keyword.strip()
+    if kw:
+        sql += """ AND (v.plate LIKE ? OR r.name LIKE ? OR r.phone LIKE ?
+                       OR (bd.code || '-' || h.unit || '-' || h.room_no) LIKE ?)"""
+        like = f"%{kw}%"
+        args += [like, like, like, like]
+    if building_id:
+        sql += " AND h.building_id = ?"
+        args.append(building_id)
+    return sql, args
+
+
+def count_vehicles(db, community_id, keyword="", building_id=0):
+    where, args = _vehicle_where(community_id, keyword, building_id)
+    return scalar(db, "SELECT COUNT(*)" + where, args)
+
+
+def search_vehicles(db, community_id, keyword="", building_id=0, page=0, page_size=VEHICLE_PAGE_SIZE):
+    """车辆清单（页/全量），附停车费缴至月份。page=0 返回全部（CSV 导出用）。"""
+    where, args = _vehicle_where(community_id, keyword, building_id)
+    sql = """
+        SELECT v.id AS vehicle_id, v.plate, v.remark AS vehicle_remark, v.created_at,
+               h.id AS house_id, h.unit, h.room_no, h.parking_no, bd.code AS building_code,
+               r.name AS owner_name, r.phone AS owner_phone
+        """ + where + """
+        ORDER BY bd.id, h.unit, h.floor, h.room_no, v.id"""
+    if page:
+        sql += " LIMIT ? OFFSET ?"
+        args = args + [page_size, (page - 1) * page_size]
+    rows = [dict(r) for r in query_all(db, sql, args)]
+    for r in rows:
+        r["house_label"] = house_label_text(r["building_code"], r["unit"], r["room_no"])
+    _attach_paid_until(db, rows)
+    return rows
+
+
+def _attach_paid_until(db, rows):
+    """批量计算每辆车的停车费缴至月份（一次查询，避免逐车 N+1）。"""
+    if not rows:
+        return
+    vids = [r["vehicle_id"] for r in rows]
+    marks = ",".join("?" for _ in vids)
+    best = {}
+    for b in query_all(db, """SELECT vehicle_id, period_start, months FROM bill
+                              WHERE status='paid' AND vehicle_id IN (%s)""" % marks, vids):
+        if b["vehicle_id"] and b["period_start"] and len(b["period_start"]) == 7:
+            end = month_add(b["period_start"], max(b["months"], 1) - 1)
+            if end > best.get(b["vehicle_id"], ""):
+                best[b["vehicle_id"]] = end
+    for r in rows:
+        r["paid_until"] = best.get(r["vehicle_id"], "")
 
 
 def transfer_owner(db, hid, form):

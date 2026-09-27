@@ -746,7 +746,7 @@ def main():
              "/expense",
              "/staff/import", "/staff/%d" % sid_staff, "/staff/%d/edit" % sid_staff, "/resident/add?house_id=%d&role=member" % hid_main,
              "/fee/items", "/fee/bills", "/fee/generate", "/fee/overdue", "/fee/payments",
-             "/report", "/repair", "/notice", "/settings", "/house/%d" % hid_main,
+             "/report", "/repair", "/notice", "/settings", "/house/vehicles", "/house/%d" % hid_main,
              "/house/%d/edit" % hid_main, "/fee/house/%d/payall" % hid_main,
              "/fee/bill/%d" % bill["id"], "/resident/export"]
     ok = True
@@ -1063,6 +1063,72 @@ def main():
     r = c2.post("/fee/bill/%d/edit-period" % bid_same, data={"new_period": "2027-01"},
                 follow_redirects=True)
     check("改账期撞到同名同期账单被拦截", "同名".encode() in r.data)
+
+    # ============ 22. v2.6.0：车牌全局查重 / 停车费关联车辆 / 车辆清单 ============
+    print("\n== 车牌全局查重 ==")
+    veh_a = db_rows("SELECT id, house_id FROM vehicle WHERE plate='皖A99999'")[0]
+    r = c2.post("/house/%d/vehicle/add" % hid_main, data={"plate": "皖A99999", "vehicle_remark": ""},
+                follow_redirects=True)
+    check("跨房屋重复车牌被拦截并提示现有位置",
+          "已登记在".encode() in r.data and "不能重复登记".encode() in r.data)
+    from services import house_import as _hi26
+    con_i = sqlite3.connect(config.DB_PATH)
+    con_i.row_factory = sqlite3.Row
+    con_i.execute("PRAGMA foreign_keys=ON")
+    try:
+        recs = []
+        for i, room in enumerate((1, 2)):
+            recs.append({"lineno": i + 2, "errors": [], "members": [], "tenants": [],
+                         "vehicles": [{"plate": "皖V26880", "remark": "测试车位"}],
+                         "remark": "", "building_code": "26#", "unit": 1, "room_no": room,
+                         "area_100": 0, "parking_no": "", "owner": None})
+        created26 = _hi26.execute_import(con_i, 1, recs)
+        n_plate = con_i.execute("SELECT COUNT(*) FROM vehicle WHERE plate='皖V26880'").fetchone()[0]
+        check("名册导入同车牌跨户只登记一次", created26["vehicles"] == 1 and n_plate == 1,
+              "新建 %d / 库内 %d" % (created26["vehicles"], n_plate))
+        con_i.commit()
+    finally:
+        con_i.close()
+
+    print("\n== 生成停车费账单关联车辆 ==")
+    r = c2.post("/fee/generate", data={"fee_item_id": str(fid_park), "period": "2027-03",
+                                       "building_id": "selected", "status_scope": "all",
+                                       "house_ids": [str(hid_imp)],
+                                       "vehicle_for_%s" % hid_imp: str(veh_a["id"])})
+    check("预览页出现关联车辆下拉", "关联车辆".encode() in r.data and "皖A99999".encode() in r.data)
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_park), "period": "2027-03",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": [str(hid_imp)],
+                                               "vehicle_for_%s" % hid_imp: str(veh_a["id"])},
+                follow_redirects=True)
+    check("停车费账单生成成功", "共 1 笔".encode() in r.data)
+    vid_set = db_rows("SELECT vehicle_id FROM bill WHERE fee_item_id=? AND period='2027-03'",
+                      (fid_park,))[0]["vehicle_id"]
+    check("账单已关联所选车辆", vid_set == veh_a["id"], str(vid_set))
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_park), "period": "2027-04",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": [str(hid_imp)]}, follow_redirects=True)
+    vid_none = db_rows("SELECT vehicle_id FROM bill WHERE fee_item_id=? AND period='2027-04'",
+                       (fid_park,))[0]["vehicle_id"]
+    check("不选车辆时账单不关联", vid_none is None, str(vid_none))
+    other_vid = db_rows("SELECT id FROM vehicle WHERE house_id != ?", (hid_imp,))[0]["id"]
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_park), "period": "2027-05",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": [str(hid_imp)],
+                                               "vehicle_for_%s" % hid_imp: str(other_vid)},
+                follow_redirects=True)
+    check("关联车辆与房屋不匹配被拦截", "不匹配".encode() in r.data)
+    n_05 = db_rows("SELECT COUNT(*) AS n FROM bill WHERE period='2027-05'")[0]["n"]
+    check("不匹配时未生成账单", n_05 == 0, str(n_05))
+
+    print("\n== 车辆清单页与导出 ==")
+    r = c2.get("/house/vehicles")
+    check("车辆清单页可打开", r.status_code == 200 and "皖A99999".encode() in r.data)
+    r = c2.get("/house/vehicles?keyword=皖A99999")
+    check("按车牌搜索车辆", r.status_code == 200 and "皖A99999".encode() in r.data)
+    r = c2.get("/house/vehicles/export")
+    check("车辆清单 CSV 可导出", r.status_code == 200 and r.data.startswith(b"\xef\xbb\xbf")
+          and "皖A99999".encode() in r.data)
 
     print("\n" + "=" * 50)
     print("通过 %d 项检查，失败 %d 项" % (PASS, len(FAIL)))
