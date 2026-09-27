@@ -32,20 +32,51 @@
       </div>
       <div class="col-md-3">
         <label class="form-label">范围</label>
-        <select class="form-select" name="building_id">
+        <select class="form-select" name="building_id" id="scopeSelect">
           <option value="">全部楼栋</option>
           {% for b in buildings %}
           <option value="{{ b.id }}" {{ sel('building_id', b.id, form.building_id if form else '') }}>{{ b.code }}</option>
           {% endfor %}
+          <option value="selected" {{ sel('building_id', 'selected', form.building_id if form else '') }}>指定户（自行勾选）</option>
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-3" id="statusScopeWrap">
         <label class="form-label">房屋状态</label>
         <select class="form-select" name="status_scope">
           <option value="all" {{ sel('status_scope', 'all', form.status_scope if form else '') }}>全部房屋</option>
           <option value="occupied" {{ sel('status_scope', 'occupied', form.status_scope if form else '') }}>仅已入住（自住/出租）</option>
           <option value="vacant" {{ sel('status_scope', 'vacant', form.status_scope if form else '') }}>仅空置</option>
         </select>
+      </div>
+      <div class="col-12" id="housePicker" style="display:none">
+        <label class="form-label">勾选要单独生成账单的房屋（适合单价不同的特殊户，可多选）</label>
+        <div class="d-flex gap-2 align-items-center mb-2">
+          <button type="button" class="btn btn-sm btn-outline-success" id="pickAllBtn">全选</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="pickNoneBtn">清空</button>
+          <span class="form-text-hint">已选 <b id="pickCount">0</b> 户</span>
+        </div>
+        <div class="border rounded p-2" style="max-height:300px; overflow-y:auto; background:#fff">
+          {% for b in buildings %}
+          {% set bh = houses_by_building.get(b.id, []) %}
+          {% if bh %}
+          <div class="mb-2">
+            <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none fw-bold"
+                    onclick="pickGroup({{ b.id }}, true)">☑ {{ b.code }} 全选</button>
+            <div class="row g-1 mt-1">
+              {% for h in bh %}
+              <div class="col-6 col-md-4 col-lg-3">
+                <label class="d-flex align-items-center gap-1 small mb-0">
+                  <input type="checkbox" class="form-check-input mt-0 house-pick" name="house_ids"
+                         value="{{ h.id }}" data-building="{{ b.id }}">
+                  <span>{{ b.code | replace('#','') }}栋{{ h.unit }}单元{{ h.room_no }}室{% if h.owner_name %}·{{ h.owner_name }}{% endif %}</span>
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
       </div>
       <div class="col-12">
         <button class="btn btn-success px-4">预览要生成的账单</button>
@@ -84,6 +115,9 @@
       <input type="hidden" name="period" value="{{ preview.period }}">
       <input type="hidden" name="building_id" value="{{ form.building_id or 0 }}">
       <input type="hidden" name="status_scope" value="{{ form.status_scope or 'all' }}">
+      {% if form and form.get('building_id') == 'selected' %}
+      {% for hid in form.getlist('house_ids') %}<input type="hidden" name="house_ids" value="{{ hid }}">{% endfor %}
+      {% endif %}
       <button class="btn btn-primary px-4"
               data-confirm-title="确认生成账单"
               data-confirm="将为 <b>{{ preview.count }}</b> 户生成「{{ preview.fee_item.name }}」账期 <b>{{ preview.period }}</b> 的账单，应收合计 <b>¥{{ preview.total_fen | money }}</b>。<br>确定生成吗？">✅ 确认生成</button>
@@ -114,5 +148,41 @@
   sel.addEventListener("change", update);
   update();
 })();
+
+// 指定户模式：显示勾选面板、隐藏"房屋状态"过滤；统计已选户数
+(function () {
+  var scope = document.getElementById("scopeSelect");
+  var picker = document.getElementById("housePicker");
+  var statusWrap = document.getElementById("statusScopeWrap");
+  var countEl = document.getElementById("pickCount");
+  function boxes() { return Array.prototype.slice.call(document.querySelectorAll(".house-pick")); }
+  function refresh() {
+    var n = boxes().filter(function (b) { return b.checked; }).length;
+    if (countEl) countEl.textContent = n;
+  }
+  function toggle() {
+    var selected = scope.value === "selected";
+    picker.style.display = selected ? "" : "none";
+    statusWrap.style.display = selected ? "none" : "";
+    if (!selected) boxes().forEach(function (b) { b.checked = false; });
+    refresh();
+  }
+  scope.addEventListener("change", toggle);
+  toggle();
+  document.addEventListener("change", function (e) {
+    if (e.target.classList && e.target.classList.contains("house-pick")) refresh();
+  });
+  document.getElementById("pickAllBtn").addEventListener("click", function () {
+    boxes().forEach(function (b) { b.checked = true; }); refresh();
+  });
+  document.getElementById("pickNoneBtn").addEventListener("click", function () {
+    boxes().forEach(function (b) { b.checked = false; }); refresh();
+  });
+})();
+function pickGroup(bid, on) {
+  document.querySelectorAll('.house-pick[data-building="' + bid + '"]').forEach(function (b) { b.checked = on; });
+  var n = Array.prototype.slice.call(document.querySelectorAll(".house-pick")).filter(function (b) { return b.checked; }).length;
+  var el = document.getElementById("pickCount"); if (el) el.textContent = n;
+}
 </script>
 {% endblock %}

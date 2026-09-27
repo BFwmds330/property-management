@@ -995,6 +995,75 @@ def main():
     check("设置页回到未启用状态", "未启用".encode() in c5.get("/settings").data)
     check("关闭后哈希已清除", len(db_rows("SELECT value FROM app_meta WHERE key='startup_pin_hash'")) == 0)
 
+    # ============ 21. v2.5.0：同名收费项目 + 指定户生成 ============
+    print("\n== 老库迁移：fee_item 允许同名（自包含内存库验证）==")
+    con_m = sqlite3.connect(":memory:")
+    try:
+        con_m.execute("""CREATE TABLE fee_item (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            community_id INTEGER NOT NULL REFERENCES community(id) ON DELETE CASCADE,
+            name TEXT NOT NULL, pricing_mode TEXT DEFAULT 'area', unit_price INTEGER DEFAULT 0,
+            cycle TEXT DEFAULT 'month', enabled INTEGER DEFAULT 1, remark TEXT DEFAULT '',
+            UNIQUE(community_id, name))""")
+        con_m.execute("INSERT INTO fee_item (id, community_id, name, pricing_mode, unit_price, cycle, enabled) "
+                      "VALUES (1, 1, '物业费', 'area', 220, 'month', 1)")
+        from database import ensure_schema as _ensure21
+        _ensure21(con_m)          # 检测到旧 UNIQUE 结构 → 自动重建
+        con_m.execute("INSERT INTO community (id, name) VALUES (1, '迁移测试小区')")
+        con_m.execute("INSERT INTO fee_item (community_id, name, pricing_mode, unit_price, cycle, enabled) "
+                      "VALUES (1, '物业费', 'fixed', 100, 'month', 1)")
+        n_same = con_m.execute("SELECT COUNT(*) FROM fee_item WHERE name='物业费'").fetchone()[0]
+        kept = con_m.execute("SELECT unit_price FROM fee_item WHERE id=1").fetchone()[0]
+        check("旧结构自动重建，同名可并存且原数据保留", n_same == 2 and kept == 220,
+              "同名 %d 个 / 原单价 %s" % (n_same, kept))
+    finally:
+        con_m.close()
+
+    print("\n== 同名项目与完全重复防呆 ==")
+    r = c2.post("/fee/items/add", data={"name": "物业费", "pricing_mode": "area",
+                                        "unit_price": "2.20", "cycle": "month"}, follow_redirects=True)
+    check("名称/方式/周期/单价完全相同被拦截", "无需重复添加".encode() in r.data)
+    r = c2.post("/fee/items/add", data={"name": "物业费", "pricing_mode": "fixed",
+                                        "unit_price": "1.00", "cycle": "month"}, follow_redirects=True)
+    check("同名不同单价的项目可添加", "收费项目已添加".encode() in r.data)
+    f1b = db_rows("SELECT id FROM fee_item WHERE name='物业费' AND pricing_mode='fixed'")[0]["id"]
+
+    print("\n== 指定户生成 ==")
+    h_sel = [str(r["id"]) for r in db_rows(
+        "SELECT id FROM house WHERE community_id=1 ORDER BY id LIMIT 2")]
+    r = c2.post("/fee/generate", data={"fee_item_id": str(f1), "period": "2027-01",
+                                       "building_id": "selected", "status_scope": "all",
+                                       "house_ids": h_sel})
+    check("指定户预览只含勾选的 2 户", "将生成".encode() in r.data and "<b>2</b>".encode() in r.data)
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(f1), "period": "2027-01",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": h_sel}, follow_redirects=True)
+    check("只为勾选的 2 户生成账单", "共 2 笔".encode() in r.data)
+    n_p = db_rows("SELECT COUNT(*) AS n FROM bill WHERE period='2027-01'")[0]["n"]
+    check("其他户没有该账期账单", n_p == 2, str(n_p))
+    r = c2.post("/fee/generate", data={"fee_item_id": str(f1), "period": "2027-02",
+                                       "building_id": "selected", "status_scope": "all",
+                                       "house_ids": []}, follow_redirects=True)
+    check("一户都没勾时给出提示", "没有需要生成的房屋".encode() in r.data)
+
+    print("\n== 每户同账期同名欠费唯一 ==")
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(f1b), "period": "2027-01",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": h_sel[:1]}, follow_redirects=True)
+    check("同名另一项目同账期被排除（不生成）", "没有需要生成的房屋".encode() in r.data)
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(f2), "period": "2027-01",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": h_sel[:1]}, follow_redirects=True)
+    check("不同名项目同账期可并存（正常生成）", "共 1 笔".encode() in r.data)
+    # 造一笔 2027-02 的同名账单，尝试改期到 2027-01 → 同名撞期拦截
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(f1b), "period": "2027-02",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": h_sel[:1]}, follow_redirects=True)
+    bid_same = db_rows("SELECT id FROM bill WHERE fee_item_id=? AND period='2027-02'", (f1b,))[0]["id"]
+    r = c2.post("/fee/bill/%d/edit-period" % bid_same, data={"new_period": "2027-01"},
+                follow_redirects=True)
+    check("改账期撞到同名同期账单被拦截", "同名".encode() in r.data)
+
     print("\n" + "=" * 50)
     print("通过 %d 项检查，失败 %d 项" % (PASS, len(FAIL)))
     for name, detail in FAIL:

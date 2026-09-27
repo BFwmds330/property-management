@@ -49,9 +49,13 @@ def _item_fields(db, form):
 
 def add_fee_item(db, community_id, form):
     name, pricing_mode, cycle, unit_price, remark = _item_fields(db, form)
-    if scalar(db, "SELECT COUNT(*) FROM fee_item WHERE community_id=? AND name=?",
-              (community_id, name)) > 0:
-        raise UserError("已经有叫“%s”的收费项目了" % name)
+    # v2.5.0：允许同名项目（如两档"物业费"，单价/范围不同）；
+    # 但名称+计价方式+周期+单价完全相同的重复项没有意义，仍然拦截
+    dup = query_one(db, """SELECT id FROM fee_item WHERE community_id=? AND name=?
+                           AND pricing_mode=? AND cycle=? AND unit_price=?""",
+                    (community_id, name, pricing_mode, cycle, unit_price))
+    if dup:
+        raise UserError("已经有名称、计价方式、周期、单价完全相同的收费项目了（项目 #%d），无需重复添加" % dup["id"])
     cur = db.execute(
         """INSERT INTO fee_item (community_id, name, pricing_mode, unit_price, cycle, enabled, remark)
            VALUES (?,?,?,?,?,1,?)""",
@@ -63,9 +67,11 @@ def add_fee_item(db, community_id, form):
 def update_fee_item(db, fid, form):
     row = get_fee_item(db, fid)
     name, pricing_mode, cycle, unit_price, remark = _item_fields(db, form)
-    if scalar(db, "SELECT COUNT(*) FROM fee_item WHERE community_id=? AND name=? AND id!=?",
-              (row["community_id"], name, fid)) > 0:
-        raise UserError("已经有叫“%s”的收费项目了" % name)
+    dup = query_one(db, """SELECT id FROM fee_item WHERE community_id=? AND name=?
+                           AND pricing_mode=? AND cycle=? AND unit_price=? AND id!=?""",
+                    (row["community_id"], name, pricing_mode, cycle, unit_price, fid))
+    if dup:
+        raise UserError("已经有名称、计价方式、周期、单价完全相同的收费项目了（项目 #%d），无需重复添加" % dup["id"])
     db.execute(
         "UPDATE fee_item SET name=?, pricing_mode=?, unit_price=?, cycle=?, remark=? WHERE id=?",
         (name, pricing_mode, unit_price, cycle, remark, fid))
@@ -104,13 +110,18 @@ def compute_bill_amount(fee_item, house):
     return int(fee_item["unit_price"]) * months
 
 
-def generate_preview(db, community_id, fee_item_id, period_value, building_id=0, status_scope="all"):
-    """生成前预览：哪些房屋将产生账单、合计金额。"""
+def generate_preview(db, community_id, fee_item_id, period_value, building_id=0, status_scope="all",
+                     house_ids=None):
+    """生成前预览：哪些房屋将产生账单、合计金额。
+
+    building_id 传原始值（""/"selected"/楼栋id）："selected" 表示指定户模式，按 house_ids 勾选。
+    """
     fee_item = get_fee_item(db, fee_item_id)
     if fee_item["community_id"] != community_id:
         raise UserError("该收费项目不属于当前小区")
     period, period_start, months = parse_period(fee_item["cycle"], period_value)
-    houses = _scope_houses(db, community_id, fee_item, period, building_id, status_scope)
+    houses = _scope_houses(db, community_id, fee_item, period, building_id, status_scope,
+                           house_ids=house_ids)
     lines = []
     total = 0
     for h in houses:
@@ -125,32 +136,47 @@ def generate_preview(db, community_id, fee_item_id, period_value, building_id=0,
     }
 
 
-def _scope_houses(db, community_id, fee_item, period, building_id=0, status_scope="all"):
+def _scope_houses(db, community_id, fee_item, period, building_id=0, status_scope="all",
+                  house_ids=None):
     sql = """SELECT h.*, b.code AS building_code FROM house h JOIN building b ON b.id=h.building_id
              WHERE h.community_id=?"""
     args = [community_id]
-    if building_id:
+    bid = safe_int(building_id)          # ""/"0"/"selected" 都归一为 0（不过滤楼栋）
+    if bid:
         sql += " AND h.building_id=?"
-        args.append(building_id)
+        args.append(bid)
     if status_scope == "occupied":
         sql += " AND h.status IN ('self','rent')"
     elif status_scope == "vacant":
         sql += " AND h.status = 'vacant'"
+    if building_id == "selected":
+        # 指定户模式：只生成勾选的户；一户没勾就是 0 户（绝不回退成"全部房屋"）
+        ids = [safe_int(x) for x in (house_ids or []) if safe_int(x)]
+        if not ids:
+            return []
+        if len(ids) > 5000:
+            raise UserError("一次最多勾选 5000 户")
+        marks = ",".join("?" for _ in ids)
+        sql += " AND h.id IN (%s)" % marks
+        args += ids
     sql += " ORDER BY b.id, h.unit, h.floor, h.room_no"
     houses = [dict(r) for r in query_all(db, sql, args)]
-    # 排除该账期已生成过（未作废）账单的房屋
+    # 排除该账期"已有同名项目账单"的房屋（v2.5.0：允许同名项目，但每户同期同名欠费只能有一笔，
+    # 保证欠费清单/导出不会出现两笔同名同期的账单）
     exists = {r["house_id"] for r in query_all(db, """
-        SELECT house_id FROM bill WHERE fee_item_id=? AND period=? AND status!='void'""",
-        (fee_item["id"], period))}
+        SELECT b.house_id FROM bill b JOIN fee_item f2 ON f2.id = b.fee_item_id
+        WHERE f2.name = ? AND b.period = ? AND b.status != 'void'""",
+        (fee_item["name"], period))}
     return [h for h in houses if h["id"] not in exists]
 
 
 def generate_bills(db, community_id, form, is_demo=0):
     """确认后真正生成账单。返回 (生成笔数, 合计分, 跳过房屋数)。"""
     fee_item_id = parse_int(form.get("fee_item_id"), "收费项目", 1, 10**9)
-    building_id = parse_int(form.get("building_id"), "楼栋", 0, 10**9, required=False, default=0)
-    status_scope = form.get("status_scope", "all")
-    preview = generate_preview(db, community_id, fee_item_id, form.get("period"), building_id, status_scope)
+    house_ids = form.getlist("house_ids")
+    preview = generate_preview(db, community_id, fee_item_id, form.get("period"),
+                               form.get("building_id", 0), form.get("status_scope", "all"),
+                               house_ids=house_ids)
     if preview["count"] == 0:
         raise UserError("没有需要生成的房屋（所选范围内都已生成过这个账期的账单）")
     fee_item = preview["fee_item"]
@@ -356,10 +382,13 @@ def edit_bill_period(db, bill_id, form):
         period, period_start, months = raw, raw + "-01", 12
     else:
         raise UserError("账期格式不正确：%r。可用格式：2029.1-2029.9（年.月-年.月）、2026-09（单月）、2026（整年）" % raw)
-    dup = query_one(db, "SELECT id FROM bill WHERE house_id=? AND fee_item_id=? AND period=? AND id!=?",
-                    (bill["house_id"], bill["fee_item_id"], period, bill_id))
+    dup = query_one(db, """
+        SELECT b.id FROM bill b JOIN fee_item f2 ON f2.id = b.fee_item_id
+        WHERE b.house_id=? AND b.period=? AND b.id!=? AND f2.name =
+              (SELECT name FROM fee_item WHERE id=?)""",
+        (bill["house_id"], period, bill_id, bill["fee_item_id"]))
     if dup:
-        raise UserError("这套房已有账期 %s 的账单（账单 #%d），同房同项目同账期不能重复" % (period, dup["id"]))
+        raise UserError("这套房已有账期 %s 的同名项目账单（账单 #%d）：同房同账期同名欠费不能重复" % (period, dup["id"]))
     db.execute("UPDATE bill SET period=?, period_start=?, months=? WHERE id=?",
                (period, period_start, months, bill_id))
     log_op(db, "收费", "修改账期", "账单 #%d（%s %s）账期由 %s 改为 %s" % (
