@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """小区管理：新增 / 修改 / 删除 / 搜索，以及删除前的级联影响统计。"""
+import re
+
 from database import log_op, query_all, query_one, scalar
 from utils import UserError, clean_str, parse_area, parse_date, parse_int
 
@@ -60,6 +62,8 @@ def _fill_community_fields(db, form, is_new):
     data["takeover_date"] = parse_date(form.get("takeover_date"), "物业接管日期")
     data["default_unit_price"] = parse_area(
         form.get("default_unit_price"), "物业费默认单价（元/㎡/月）")
+    bs = (form.get("billing_start") or "").strip()
+    data["billing_start"] = bs if re.fullmatch(r"\d{4}-\d{2}", bs) else "" 
     data["remark"] = clean_str(form.get("remark"), "备注", 500)
     return data
 
@@ -70,11 +74,11 @@ def add_community(db, form, is_demo=0):
         raise UserError("已经有叫“%s”的小区了，小区名称不能重复" % data["name"])
     cur = db.execute(
         """INSERT INTO community (name, address, building_count, parking_info,
-               delivery_date, takeover_date, default_unit_price, remark, is_demo)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
+               delivery_date, takeover_date, default_unit_price, billing_start, remark, is_demo)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
         (data["name"], data["address"], data["building_count"], data["parking_info"],
          data["delivery_date"], data["takeover_date"], data["default_unit_price"],
-         data["remark"], is_demo))
+         data["billing_start"], data["remark"], is_demo))
     log_op(db, "小区", "新增小区", "新增小区「%s」" % data["name"], is_demo)
     return cur.lastrowid
 
@@ -86,10 +90,10 @@ def update_community(db, cid, form):
         raise UserError("已经有叫“%s”的小区了，小区名称不能重复" % data["name"])
     db.execute(
         """UPDATE community SET name=?, address=?, building_count=?, parking_info=?,
-               delivery_date=?, takeover_date=?, default_unit_price=?, remark=? WHERE id=?""",
+               delivery_date=?, takeover_date=?, default_unit_price=?, billing_start=?, remark=? WHERE id=?""",
         (data["name"], data["address"], data["building_count"], data["parking_info"],
          data["delivery_date"], data["takeover_date"], data["default_unit_price"],
-         data["remark"], cid))
+         data["billing_start"], data["remark"], cid))
     log_op(db, "小区", "修改小区", "修改小区「%s」" % data["name"])
 
 

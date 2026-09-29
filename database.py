@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS community (
     delivery_date    TEXT DEFAULT '',
     takeover_date    TEXT DEFAULT '',
     default_unit_price INTEGER DEFAULT 0,
+    billing_start    TEXT DEFAULT '',
     remark           TEXT DEFAULT '',
     is_demo          INTEGER DEFAULT 0,
     created_at       TEXT DEFAULT (datetime('now','localtime'))
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS house (
     house_type_id     INTEGER REFERENCES house_type(id) ON DELETE SET NULL,
     status            TEXT DEFAULT 'vacant',
     owner_resident_id INTEGER REFERENCES resident(id) ON DELETE SET NULL,
+    fee_item_id       INTEGER REFERENCES fee_item(id) ON DELETE SET NULL,
     occupied_date     TEXT DEFAULT '',
     remark            TEXT DEFAULT '',
     created_at        TEXT DEFAULT (datetime('now','localtime')),
@@ -349,6 +351,11 @@ def _migrate(db):
     rcols = {r[1] for r in db.execute("PRAGMA table_info(repair)")}
     if "photo_path" not in rcols:
         db.execute("ALTER TABLE repair ADD COLUMN photo_path TEXT DEFAULT ''")
+    ccols = {r[1] for r in db.execute("PRAGMA table_info(community)")}
+    if "billing_start" not in ccols:
+        db.execute("ALTER TABLE community ADD COLUMN billing_start TEXT DEFAULT ''")
+    if "fee_item_id" not in cols:
+        db.execute("ALTER TABLE house ADD COLUMN fee_item_id INTEGER REFERENCES fee_item(id) ON DELETE SET NULL")
     _migrate_fee_item_allow_dup_names(db)
 
 

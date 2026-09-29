@@ -27,6 +27,10 @@
             {% else %}<span class="text-secondary">未登记</span>{% endif %}</div>
           <div class="col-6 col-md-4"><span class="text-secondary">车位号：</span>{{ house.parking_no or '—' }}</div>
           <div class="col-6 col-md-4"><span class="text-secondary">入住日期：</span>{{ house.occupied_date or '—' }}</div>
+          <div class="col-6 col-md-4"><span class="text-secondary">物业费档位：</span>
+            {% if tier_item and tier_item.unit_price == 0 %}<b>免收（不收取物业费）</b>
+            {% elif tier_item %}<b>{{ tier_item.unit_price | money }} 元/㎡/月</b>（{{ tier_item.name }}）
+            {% else %}<span class="text-secondary">未指定（按所选项目单价）</span>{% endif %}</div>
           <div class="col-12"><span class="text-secondary">欠费：</span>
             {% if house.owed_fen > 0 %}<span class="owed-red">¥{{ house.owed_fen | money }}</span>
             {% else %}<span class="text-success">无欠费</span>{% endif %}

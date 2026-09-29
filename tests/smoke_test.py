@@ -1050,7 +1050,7 @@ def main():
     r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(f1b), "period": "2027-01",
                                                "building_id": "selected", "status_scope": "all",
                                                "house_ids": h_sel[:1]}, follow_redirects=True)
-    check("同名另一项目同账期被排除（不生成）", "没有需要生成的房屋".encode() in r.data)
+    check("同名另一项目同账期被排除（不生成）", "没有需要生成的账单".encode() in r.data)
     r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(f2), "period": "2027-01",
                                                "building_id": "selected", "status_scope": "all",
                                                "house_ids": h_sel[:1]}, follow_redirects=True)
@@ -1129,6 +1129,132 @@ def main():
     r = c2.get("/house/vehicles/export")
     check("车辆清单 CSV 可导出", r.status_code == 200 and r.data.startswith(b"\xef\xbb\xbf")
           and "皖A99999".encode() in r.data)
+
+    # ============ 23. v2.6.1：账期覆盖核对（自动跳过/缺口补齐） ============
+    print("\n== 账期覆盖核对 ==")
+    c2.post("/fee/items/add", data={"name": "年费测试", "pricing_mode": "fixed",
+                                    "unit_price": "100", "cycle": "year"}, follow_redirects=True)
+    fid_y = db_rows("SELECT id FROM fee_item WHERE name='年费测试'")[0]["id"]
+    hs_all = [str(r["id"]) for r in db_rows("SELECT id FROM house WHERE community_id=1 ORDER BY id")]
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2026",
+                                               "building_id": "", "status_scope": "all"},
+                follow_redirects=True)
+    check("2026 全量生成", "共 %d 笔" % len(hs_all) in r.data.decode("utf-8"))
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2026",
+                                               "building_id": "", "status_scope": "all"},
+                follow_redirects=True)
+    check("已覆盖期间再次生成被整批跳过", "没有需要生成的账单".encode() in r.data)
+    # 给第一户手工插入 2027.1-2027.6 已缴账单（模拟表内先缴了半年）
+    hid_1 = int(hs_all[0])
+    con_y = sqlite3.connect(config.DB_PATH)
+    con_y.execute("""INSERT INTO bill (house_id, fee_item_id, period, period_start, months,
+                       amount_receivable, amount_received, status)
+                     VALUES (?,?,'2027.1-2027.6','2027-01',6,60000,60000,'paid')""", (hid_1, fid_y))
+    con_y.commit()
+    con_y.close()
+    r = c2.post("/fee/generate", data={"fee_item_id": str(fid_y), "period": "2027",
+                                       "building_id": "", "status_scope": "all"})
+    check("预览提示自动补齐缺口", "自动补齐缺口 1 笔".encode() in r.data
+          and "2027.7-2027.12".encode() in r.data)
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2027",
+                                               "building_id": "", "status_scope": "all"},
+                follow_redirects=True)
+    check("2027 生成成功（该户补齐 1 笔 + 其余整年）", "共 %d 笔" % len(hs_all) in r.data.decode("utf-8"))
+    seg = db_rows("""SELECT period, months, amount_receivable FROM bill
+                     WHERE fee_item_id=? AND house_id=? AND period LIKE '2027%'""", (fid_y, hid_1))
+    seg_new = [x for x in seg if x["period"] == "2027.7-2027.12"]
+    check("缺口段为 2027.7-2027.12（6 个月 600 元）",
+          len(seg) == 2 and seg_new and seg_new[0]["months"] == 6
+          and seg_new[0]["amount_receivable"] == 60000,
+          str([dict(x) for x in seg]))
+    n_full = db_rows("SELECT COUNT(*) AS n FROM bill WHERE fee_item_id=? AND period='2027' AND months=12",
+                     (fid_y,))[0]["n"]
+    check("其余房屋仍为整年账单", n_full == len(hs_all) - 1, str(n_full))
+    # 未缴清的已生成账单同样算覆盖
+    hid_2 = int(hs_all[1])
+    con_y = sqlite3.connect(config.DB_PATH)
+    con_y.execute("""INSERT INTO bill (house_id, fee_item_id, period, period_start, months,
+                       amount_receivable, amount_received, status)
+                     VALUES (?,?,'2028.1-2028.12','2028-01',12,120000,0,'unpaid')""", (hid_2, fid_y))
+    con_y.commit()
+    con_y.close()
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2028",
+                                               "building_id": "", "status_scope": "all"},
+                follow_redirects=True)
+    check("未缴清的已有账单同样算覆盖（跳过该户）",
+          "共 %d 笔" % (len(hs_all) - 1) in r.data.decode("utf-8"))
+    # period_start 为单位月份（'2028-2'，历史导入缺陷格式）也应参与覆盖判定
+    hid_3 = int(hs_all[2])
+    con_y = sqlite3.connect(config.DB_PATH)
+    con_y.execute("INSERT INTO bill (house_id, fee_item_id, period, period_start, months, amount_receivable, amount_received, status) VALUES (?,?,?,?,?,?,?,?)",
+                  (hid_3, fid_y, "2028.2-2029.1", "2028-2", 12, 120000, 0, "unpaid"))
+    con_y.commit()
+    con_y.close()
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2029",
+                                               "building_id": "", "status_scope": "all"},
+                follow_redirects=True)
+    seg3 = db_rows("SELECT period, months FROM bill WHERE fee_item_id=? AND house_id=? AND period LIKE '2029%'",
+                   (fid_y, hid_3))
+    check("单位月份 period_start 也算覆盖（该户只补 2029.2-2029.12）",
+          len(seg3) == 1 and seg3[0]["period"] == "2029.2-2029.12" and seg3[0]["months"] == 11,
+          str([dict(x) for x in seg3]))
+    n_29 = db_rows("SELECT COUNT(*) AS n FROM bill WHERE fee_item_id=? AND period='2029' AND months=12",
+                   (fid_y,))[0]["n"]
+    check("其余房屋 2029 仍为整年", n_29 == len(hs_all) - 1, str(n_29))
+
+    # ============ 24. v2.7.0：计费开始月份 + 接管起补 ============
+    print("== 计费开始月份与接管起补 ==")
+    r = c2.post("/community/billing-start", data={"billing_start": "2025-07"}, follow_redirects=True)
+    check("总览页设置计费开始月份", "计费开始月份已保存".encode() in r.data)
+    r = c2.get("/")
+    check("总览显示计费开始月份", "2025-07".encode() in r.data)
+    r = c2.post("/community/billing-start", data={"billing_start": "abc"}, follow_redirects=True)
+    check("非法月份被拦截", "格式应为 年-月".encode() in r.data)
+    r = c2.post("/house/add", data={"building_id": "1", "unit": "1", "floor": "5", "room_no": "599",
+                                    "status": "self", "owner_mode": "none"}, follow_redirects=True)
+    check("新增一套无账单房屋", r.status_code == 200)
+    hid_new = db_rows("SELECT id FROM house WHERE room_no=599")[0]["id"]
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2026",
+                                               "building_id": "", "status_scope": "all"},
+                follow_redirects=True)
+    check("无单房屋自动从计费开始月起补（仅生成 1 笔）",
+          "共 1 笔" in r.data.decode("utf-8"))
+    seg = db_rows("SELECT period, months, amount_receivable FROM bill WHERE fee_item_id=? AND house_id=?",
+                  (fid_y, hid_new))
+    check("补齐账期 2025.7-2026.12（18 个月 1800 元）",
+          seg and seg[0]["period"] == "2025.7-2026.12" and seg[0]["months"] == 18
+          and seg[0]["amount_receivable"] == 180000,
+          str([dict(x) for x in seg]))
+
+    # ============ 25. v2.7.1：本户物业费档位 ============
+    print("== 本户物业费档位 ==")
+    r = c2.post("/house/%d/edit" % hid_new, data={"building_id": "1", "unit": "1", "floor": "5",
+                                                  "room_no": "599", "status": "self",
+                                                  "owner_mode": "none", "fee_item_id": str(f1b)},
+                follow_redirects=True)
+    check("房屋编辑设置本户档位", r.status_code == 200)
+    r = c2.get("/house/%d" % hid_new)
+    check("详情页显示档位单价", "1.00".encode() in r.data and "物业费档位".encode() in r.data)
+    r = c2.post("/fee/generate", data={"fee_item_id": str(f1), "period": "2027-06",
+                                       "building_id": "selected", "status_scope": "all",
+                                       "house_ids": [str(hid_new)]})
+    check("预览显示本户档位单价（1.00 而非所选项目价，含接管起补 24 个月）",
+          "本户档位".encode() in r.data and "1.00".encode() in r.data
+          and "2025.7-2027.6".encode() in r.data)
+    r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(f1), "period": "2027-06",
+                                               "building_id": "selected", "status_scope": "all",
+                                               "house_ids": [str(hid_new)]}, follow_redirects=True)
+    b_tier = db_rows("SELECT fee_item_id, amount_receivable, months FROM bill WHERE fee_item_id=? AND house_id=?",
+                     (f1b, hid_new))
+    check("账单按本户档位项目入账（1.00 元/月 × 24 个月 = 24 元）",
+          b_tier and b_tier[0]["amount_receivable"] == 2400 and b_tier[0]["months"] == 24,
+          str([dict(x) for x in b_tier]))
+    # 非法档位被拦截
+    r = c2.post("/house/%d/edit" % hid_new, data={"building_id": "1", "unit": "1", "floor": "5",
+                                                  "room_no": "599", "status": "self",
+                                                  "owner_mode": "none", "fee_item_id": "99999"},
+                follow_redirects=False)
+    check("非法档位被拦截", r.status_code == 302)
 
     print("\n" + "=" * 50)
     print("通过 %d 项检查，失败 %d 项" % (PASS, len(FAIL)))

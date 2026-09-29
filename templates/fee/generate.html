@@ -80,6 +80,7 @@
       </div>
       <div class="col-12">
         <button class="btn btn-success px-4">预览要生成的账单</button>
+        <div class="form-text-hint mt-1">系统会自动核对每户已有账单：期间已被覆盖的户自动跳过，未缴的缺口月份自动补齐生成（如已缴到 26.1-26.6，则只生成 26.7-26.12）；从未开过单的房屋，自动从本小区“计费开始月份”（总览页可设置）补到所选账期末。</div>
       </div>
     </form>
   </div>
@@ -92,32 +93,35 @@
     <div class="row g-3 mb-3">
       <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">收费项目</span><b>{{ preview.fee_item.name }}</b></div></div>
       <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">账期</span><b>{{ preview.period }}</b>（{{ preview.months }} 个月）</div></div>
-      <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">将生成</span><b>{{ preview.count }}</b> 户账单{% if preview.zero_count %}<span class="text-warning-emphasis">（含 {{ preview.zero_count }} 户面积为 0，金额为 0，请补面积后重算）</span>{% endif %}</div></div>
+      <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">将生成</span><b>{{ preview.count }}</b> 笔账单{% if preview.adjusted %}（<span class="text-info">自动补齐缺口 {{ preview.adjusted }} 笔</span>）{% endif %}{% if preview.zero_count %}<span class="text-warning-emphasis">（含 {{ preview.zero_count }} 笔金额为 0：免收档或面积未录）</span>{% endif %}{% if preview.covered_skipped %}<div class="small text-secondary">另有 {{ preview.covered_skipped }} 户该期间已被已有账单覆盖，自动跳过</div>{% endif %}</div></div>
       <div class="col-md-3"><div class="stat-card"><span class="text-secondary small d-block">应收合计</span><b class="text-danger fs-5">¥{{ preview.total_fen | money }}</b></div></div>
     </div>
     <form method="post" action="{{ url_for('fee.generate_confirm') }}">
     <div class="table-responsive" style="max-height:320px">
       <table class="table table-sm table-hover table-sm-fixed mb-0">
         <thead><tr>
-          <th>房号</th><th>业主</th><th>面积(㎡)</th><th class="text-end">应收(元)</th>
+          <th>房号</th><th>账期</th><th>业主</th><th>单价</th><th>面积(㎡)</th><th class="text-end">应收(元)</th>
           {% if preview.fee_item.pricing_mode == 'fixed' %}<th>关联车辆（可选）</th>{% endif %}
         </tr></thead>
         <tbody>
           {% for line in preview.lines %}
           <tr>
             <td>{{ line.house.building_code | replace('#','') }}栋{{ line.house.unit }}单元{{ line.house.room_no }}室</td>
+            <td class="small">{{ line.period }}{% if line.backfill %} <span class="badge text-bg-warning">接管起补</span>{% elif line.adjusted %} <span class="badge text-bg-info">补齐</span>{% endif %}</td>
             <td>{{ line.house.owner_name or '—' }}</td>
+            <td class="small">{{ line.item.unit_price | money }}{% if line.item.pricing_mode == 'area' %}/㎡{% else %}/户{% endif %}{% if line.tier %} <span class="badge text-bg-warning">本户档位</span>{% endif %}</td>
             <td>{{ line.house.area_100 | area }}</td>
             <td class="text-end">{{ line.amount_fen | money }}</td>
             {% if preview.fee_item.pricing_mode == 'fixed' %}
             <td>
-              {% if line.house.vehicles %}
+              {% if line.house.vehicles and line.first_for_house %}
               <select class="form-select form-select-sm" name="vehicle_for_{{ line.house.id }}" style="max-width:180px">
                 <option value="">不关联</option>
                 {% for car in line.house.vehicles %}
                 <option value="{{ car.id }}">{{ car.plate }}</option>
                 {% endfor %}
               </select>
+              {% elif not line.first_for_house %}<span class="text-secondary small">同上户</span>
               {% else %}<span class="text-secondary small">该户无车辆登记</span>{% endif %}
             </td>
             {% endif %}
@@ -136,7 +140,7 @@
       {% endif %}
       <button class="btn btn-primary px-4"
               data-confirm-title="确认生成账单"
-              data-confirm="将为 <b>{{ preview.count }}</b> 户生成「{{ preview.fee_item.name }}」账期 <b>{{ preview.period }}</b> 的账单，应收合计 <b>¥{{ preview.total_fen | money }}</b>。<br>确定生成吗？">✅ 确认生成</button>
+              data-confirm="将生成「{{ preview.fee_item.name }}」账单 <b>{{ preview.count }}</b> 笔（账期 {{ preview.period }} 起，缺口自动补齐），应收合计 <b>¥{{ preview.total_fen | money }}</b>。<br>确定生成吗？">✅ 确认生成</button>
       <a class="btn btn-outline-secondary" href="{{ url_for('fee.generate_form') }}">重新选择</a>
     </div>
     </form>

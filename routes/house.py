@@ -72,10 +72,11 @@ def house_edit(db, hid):
     if house["community_id"] != cur["id"]:
         flash("这套房屋不属于当前小区，请先切换小区", "warning")
         return redirect(url_for("house.house_list"))
+    tier_items = db.execute("SELECT * FROM fee_item WHERE community_id=? AND name='物业费' ORDER BY unit_price", (cur["id"],)).fetchall()
     return render_template(
         "house/form.html", house=house, buildings=house_service.list_buildings(db, cur["id"]),
         types=house_service.list_house_types(db, cur["id"]),
-        residents=[], active_nav="house")
+        residents=[], tier_items=tier_items, active_nav="house")
 
 
 @house_bp.route("/house/<int:hid>/edit", methods=["POST"])
@@ -112,11 +113,16 @@ def house_detail(db, hid):
     residents = resident_service.house_residents(db, hid)
     history = resident_service.house_history(db, hid)
     bills = resident_bills(db, hid)
+    tier_items = db.execute("SELECT * FROM fee_item WHERE community_id=? AND name='物业费' ORDER BY unit_price", (cur["id"],)).fetchall()
+    tier_item = None
+    if house.get("fee_item_id"):
+        tier_item = next((x for x in tier_items if x["id"] == house["fee_item_id"]), None)
     prepaid_balance = prepaid_service.get_balance(db, hid)
     prepaid_entries = prepaid_service.list_entries(db, hid)
     return render_template("house/detail.html", house=house, residents=residents,
                            history=history, bills=bills,
                            prepaid_balance=prepaid_balance, prepaid_entries=prepaid_entries,
+                           tier_item=tier_item, tier_items=tier_items,
                            active_nav="house")
 
 
