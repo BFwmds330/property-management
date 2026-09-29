@@ -1217,14 +1217,19 @@ def main():
     r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2026",
                                                "building_id": "", "status_scope": "all"},
                 follow_redirects=True)
-    check("无单房屋自动从计费开始月起补（仅生成 1 笔）",
-          "共 1 笔" in r.data.decode("utf-8"))
+    check("计费开始月起到账期末：全量生成（25 户补 2025.7-12 + 新户 18 个月）",
+          "共 %d 笔" % (len(hs_all) + 1) in r.data.decode("utf-8"))
     seg = db_rows("SELECT period, months, amount_receivable FROM bill WHERE fee_item_id=? AND house_id=?",
                   (fid_y, hid_new))
-    check("补齐账期 2025.7-2026.12（18 个月 1800 元）",
+    check("新户补齐账期 2025.7-2026.12（18 个月 1800 元）",
           seg and seg[0]["period"] == "2025.7-2026.12" and seg[0]["months"] == 18
           and seg[0]["amount_receivable"] == 180000,
           str([dict(x) for x in seg]))
+    seg_old = db_rows("SELECT period, months, amount_receivable FROM bill WHERE fee_item_id=? AND house_id=? AND period='2025.7-2025.12'",
+                      (fid_y, int(hs_all[0])))
+    check("老房屋也自动补历史缺口（2025.7-2025.12，6 个月 600 元）",
+          seg_old and seg_old[0]["months"] == 6 and seg_old[0]["amount_receivable"] == 60000,
+          str([dict(x) for x in seg_old]))
 
     # ============ 25. v2.7.1：本户物业费档位 ============
     print("== 本户物业费档位 ==")

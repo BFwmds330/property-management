@@ -174,11 +174,11 @@ def generate_preview(db, community_id, fee_item_id, period_value, building_id=0,
     for h in houses:
         info = cmap.get(h["id"])
         covered = info["covered"] if info else set()
-        has_any = bool(info)
-        # v2.7.0：从未产生过账单的房屋，从小区"计费开始月份"起补到所选账期末
+        # v2.8.0：账期只决定截止月——所有房屋的核对区间一律从小区"计费开始月份"（未设则为所选账期首月）
+        # 到所选账期末，已有账单覆盖不了的缺口（含历史缺口）全部自动补齐
         span_s = s_key
         backfill = False
-        if not has_any and b_key is not None:
+        if b_key is not None:
             if b_key > e_key:
                 covered_skipped += 1
                 continue
@@ -271,14 +271,9 @@ def _scope_houses(db, community_id, fee_item, period, building_id=0, status_scop
         sql += " AND h.id IN (%s)" % marks
         args += ids
     sql += " ORDER BY b.id, h.unit, h.floor, h.room_no"
-    houses = [dict(r) for r in query_all(db, sql, args)]
-    # 排除该账期"已有同名项目账单"的房屋（v2.5.0：允许同名项目，但每户同期同名欠费只能有一笔，
-    # 保证欠费清单/导出不会出现两笔同名同期的账单）
-    exists = {r["house_id"] for r in query_all(db, """
-        SELECT b.house_id FROM bill b JOIN fee_item f2 ON f2.id = b.fee_item_id
-        WHERE f2.name = ? AND b.period = ? AND b.status != 'void'""",
-        (fee_item["name"], period))}
-    return [h for h in houses if h["id"] not in exists]
+    # v2.8.0：不再按"同账期同名"排除房屋——账期只是截止月，核对区间从计费开始月起，
+    # 防重复完全由 _coverage_map 的按月覆盖判定承担（同账期字符串的旧排除会挡住缺口补齐）
+    return [dict(r) for r in query_all(db, sql, args)]
 
 
 def generate_bills(db, community_id, form, is_demo=0):
