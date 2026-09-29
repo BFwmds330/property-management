@@ -295,12 +295,21 @@ def update_house(db, hid, form):
     if scalar(db, """SELECT COUNT(*) FROM house WHERE building_id=? AND unit=? AND floor=? AND room_no=? AND id!=?""",
               (building["id"], unit, floor, room_no, hid)) > 0:
         raise UserError("房屋已存在：%s，同一楼栋+单元+楼层+房号不能重复" % house_label(building, unit, room_no))
+    # 物业费档位（可选）：必须是本小区同名“物业费”项目
+    tier_id = parse_int(form.get("fee_item_id"), "物业费档位", 1, 10**9, required=False, default=None) or None
+    tier_name = ""
+    if tier_id:
+        it = query_one(db, "SELECT * FROM fee_item WHERE id=?", (tier_id,))
+        if not it or it["community_id"] != row["community_id"] or it["name"] != "物业费":
+            raise UserError("物业费档位不正确：请选择本小区的“物业费”项目")
+        tier_name = it["name"]
     db.execute(
         """UPDATE house SET unit=?, floor=?, room_no=?, area_100=?, inner_area_100=?,
-               house_type_id=?, status=?, occupied_date=?, remark=?, parking_no=? WHERE id=?""",
+               house_type_id=?, status=?, occupied_date=?, remark=?, parking_no=?, fee_item_id=? WHERE id=?""",
         (unit, floor, room_no, area_100, inner_area_100, type_id, status, occupied_date, remark,
-         clean_str(form.get("parking_no"), "车位号", 50), hid))
-    log_op(db, "房屋", "修改房屋", "修改房屋信息 %s" % house_label(building, unit, room_no))
+         clean_str(form.get("parking_no"), "车位号", 50), tier_id, hid))
+    log_op(db, "房屋", "修改房屋", "修改房屋信息 %s%s" % (
+        house_label(building, unit, room_no), ("，物业费档位=" + tier_name) if tier_name else ""))
 
 
 def delete_house(db, hid):

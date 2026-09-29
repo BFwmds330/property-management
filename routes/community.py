@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """小区管理：列表 / 新增 / 修改 / 删除 / 切换。"""
+import re
+
 from flask import redirect, flash, render_template, request, session, url_for, Blueprint
 
 from routes.helpers import cur_community, safe
 from services import community_service
+from utils import UserError
 
 community_bp = Blueprint("community", __name__)
 
@@ -64,3 +67,22 @@ def community_switch(cid):
     if not str(nxt).startswith("/"):
         nxt = url_for("main.dashboard")
     return redirect(nxt)
+
+
+@community_bp.route("/community/billing-start", methods=["POST"])
+@safe
+def billing_start_set(db):
+    """总览页设置当前小区的计费开始月份（生成账单时未开单房屋从此月起补）。"""
+    month = (request.form.get("billing_start") or "").strip()
+    if month and not re.match(r"^\d{4}-\d{2}$", month):
+        raise UserError("计费开始月份格式应为 年-月（例如 2021-07），或留空")
+    cur = cur_community(db)
+    if not cur:
+        return need_community()
+    db.execute("UPDATE community SET billing_start=? WHERE id=?", (month, cur["id"]))
+    db.commit()
+    from database import log_op
+    log_op(db, "小区", "设置计费开始月份", "「%s」计费开始月份设为 %s" % (cur["name"], month or "（清空）"))
+    db.commit()
+    flash("计费开始月份已保存：%s" % (month or "（未设置）"), "success")
+    return redirect(url_for("main.dashboard"))

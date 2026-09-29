@@ -73,7 +73,20 @@
               <input class="form-control" type="date" name="occupied_date"
                      value="{{ v('occupied_date', house.occupied_date if house else '') }}">
             </div>
-            <div class="col-12">
+            {% if tier_items %}<div class="col-6 col-md-3">
+        <label class="form-label">物业费档位</label>
+        <select class="form-select" name="fee_item_id">
+          <option value="">未指定（按所选项目单价）</option>
+          {% for it in tier_items %}
+          <option value="{{ it.id }}" {{ sel('fee_item_id', it.id, house.fee_item_id if house else '') }}>
+            {% if it.unit_price == 0 %}免收（不收取物业费）{% else %}{{ it.unit_price | money }} 元/㎡/月{% endif %}{{ '（停用）' if not it.enabled }}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="form-text-hint">本户适用哪一档物业费；生成账单时按本户档位计价</div>
+      </div>
+{% endif %}
+      <div class="col-12">
               <label class="form-label">备注</label>
               <textarea class="form-control" name="remark" rows="2" maxlength="300">{{ v('remark', house.remark if house else '') }}</textarea>
             </div>

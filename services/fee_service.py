@@ -95,13 +95,14 @@ def delete_fee_item(db, fid):
 
 # ---------------------------------------------------------------- 账单生成
 
-def compute_bill_amount(fee_item, house):
+def compute_bill_amount(fee_item, house, months=None):
     """按计价方式算一笔账单金额（分）。
 
     按面积：建筑面积(0.01㎡整数) × 单价(分/㎡/月) × 月数 ÷ 100；
-    按户：单价(分/户/月) × 月数。
+    按户：单价(分/户/月) × 月数。months 缺省时按收费项目周期取整段月数。
     """
-    months = {"month": 1, "quarter": 3, "year": 12}[fee_item["cycle"]]
+    if months is None:
+        months = {"month": 1, "quarter": 3, "year": 12}[fee_item["cycle"]]
     if fee_item["pricing_mode"] == "area":
         area_100 = int(house["area_100"] or 0)
         if area_100 <= 0:
@@ -110,11 +111,39 @@ def compute_bill_amount(fee_item, house):
     return int(fee_item["unit_price"]) * months
 
 
+def _coverage_map(db, community_id, item_name):
+    """该小区同名项目全部未作废账单的覆盖图：{house_id: {"covered": set(月键), "any": True}}。
+
+    月键 = year*12+month-1；period_start 格式异常的账单计入 any（说明该户开过单）
+    但不计入 covered（无法确定覆盖月份）。
+    """
+    cmap = {}
+    for b in query_all(db, """
+            SELECT b.house_id, b.period_start, b.months FROM bill b
+            JOIN fee_item f2 ON f2.id = b.fee_item_id
+            JOIN house h ON h.id = b.house_id
+            WHERE h.community_id = ? AND f2.name = ? AND b.status != 'void'""",
+            (community_id, item_name)):
+        e = cmap.setdefault(b["house_id"], {"covered": set(), "any": True})
+        mm = re.match(r"^(\d{4})-(\d{1,2})$", (b["period_start"] or "").strip())
+        if mm:
+            try:
+                n = max(int(b["months"] or 1), 1)
+            except (TypeError, ValueError):
+                n = 1
+            base = int(mm.group(1)) * 12 + int(mm.group(2)) - 1
+            for k in range(n):
+                e["covered"].add(base + k)
+    return cmap
+
+
 def generate_preview(db, community_id, fee_item_id, period_value, building_id=0, status_scope="all",
                      house_ids=None):
     """生成前预览：哪些房屋将产生账单、合计金额。
 
     building_id 传原始值（""/"selected"/楼栋id）："selected" 表示指定户模式，按 house_ids 勾选。
+    v2.6.1 账期覆盖核对：逐户核对该户同名项目已有账单覆盖的月份——
+    已全部覆盖的户自动跳过；部分覆盖的户只生成缺口月份（账期自动改为缺口段，可产生多笔）。
     """
     fee_item = get_fee_item(db, fee_item_id)
     if fee_item["community_id"] != community_id:
@@ -122,15 +151,85 @@ def generate_preview(db, community_id, fee_item_id, period_value, building_id=0,
     period, period_start, months = parse_period(fee_item["cycle"], period_value)
     houses = _scope_houses(db, community_id, fee_item, period, building_id, status_scope,
                            house_ids=house_ids)
+    s_key = int(period_start[:4]) * 12 + int(period_start[5:7]) - 1
+    e_key = s_key + months - 1
+    cmap = _coverage_map(db, community_id, fee_item["name"])
+    tier_map = {}
+    assigned = {h.get("fee_item_id") for h in houses if h.get("fee_item_id")}
+    assigned.discard(fee_item["id"])
+    assigned.discard(None)
+    for aid in assigned:
+        it = query_one(db, "SELECT * FROM fee_item WHERE id=? AND community_id=?", (aid, community_id))
+        if it:
+            tier_map[aid] = dict(it)
+    c_row = query_one(db, "SELECT billing_start FROM community WHERE id=?", (community_id,))
+    bs = ((c_row["billing_start"] if c_row else "") or "").strip()
+    mm_bs = re.match(r"^(\d{4})-(\d{1,2})$", bs)
+    b_key = (int(mm_bs.group(1)) * 12 + int(mm_bs.group(2)) - 1) if mm_bs else None
     lines = []
     total = 0
+    covered_skipped = 0
+    adjusted = 0
+    backfilled = 0
     for h in houses:
-        amt = compute_bill_amount(fee_item, h)
-        total += amt
-        lines.append({"house": h, "amount_fen": amt})
+        info = cmap.get(h["id"])
+        covered = info["covered"] if info else set()
+        has_any = bool(info)
+        # v2.7.0：从未产生过账单的房屋，从小区"计费开始月份"起补到所选账期末
+        span_s = s_key
+        backfill = False
+        if not has_any and b_key is not None:
+            if b_key > e_key:
+                covered_skipped += 1
+                continue
+            span_s = b_key
+            backfill = b_key < s_key
+        span_months = list(range(span_s, e_key + 1))
+        if len(covered.intersection(span_months)) >= len(span_months):
+            covered_skipped += 1
+            continue
+        # v2.7.1：本户适用档位——house.fee_item_id 指向同名项目时按本户档位计价
+        eff_item, eff_tier = fee_item, False
+        if h.get("fee_item_id") and h["fee_item_id"] != fee_item["id"]:
+            it = tier_map.get(h["fee_item_id"])
+            if it and it["name"] == fee_item["name"] and it["community_id"] == community_id:
+                eff_item, eff_tier = it, True
+        runs, run = [], []
+        for m in span_months:
+            if m in covered:
+                if run:
+                    runs.append(run)
+                    run = []
+            else:
+                run.append(m)
+        if run:
+            runs.append(run)
+        first = True
+        for run in runs:
+            r_months = len(run)
+            y1, m1 = divmod(run[0], 12)
+            y2, m2 = divmod(run[-1], 12)
+            full = (r_months == months and run[0] == s_key)
+            line_period = period if full else "%d.%d-%d.%d" % (y1, m1 + 1, y2, m2 + 1)
+            line_ps = "%04d-%02d" % (y1, m1 + 1)
+            amt = compute_bill_amount(eff_item, h, r_months)
+            total += amt
+            lines.append({"house": h, "amount_fen": amt, "period": line_period,
+                          "period_start": line_ps, "months": r_months,
+                          "adjusted": not full, "backfill": backfill and not full,
+                          "first_for_house": first, "item": eff_item,
+                          "tier": bool(eff_tier)})
+            if not full:
+                adjusted += 1
+                if backfill:
+                    backfilled += 1
+            first = False
     # v2.6.0：给每户带上名下车辆（预览页可为停车费类账单选择关联车牌）
     if lines:
-        hid_list = [l["house"]["id"] for l in lines]
+        hid_list = []
+        for l in lines:
+            if l["house"]["id"] not in hid_list:
+                hid_list.append(l["house"]["id"])
         marks = ",".join("?" for _ in hid_list)
         veh = {}
         for v in query_all(db, "SELECT id, house_id, plate FROM vehicle WHERE house_id IN (%s) ORDER BY id" % marks,
@@ -143,6 +242,8 @@ def generate_preview(db, community_id, fee_item_id, period_value, building_id=0,
         "period": period, "period_start": period_start, "months": months,
         "lines": lines, "count": len(lines), "total_fen": total,
         "zero_count": sum(1 for l in lines if l["amount_fen"] == 0),
+        "covered_skipped": covered_skipped, "adjusted": adjusted,
+        "backfilled": backfilled,
     }
 
 
@@ -188,32 +289,36 @@ def generate_bills(db, community_id, form, is_demo=0):
                                form.get("building_id", 0), form.get("status_scope", "all"),
                                house_ids=house_ids)
     if preview["count"] == 0:
-        raise UserError("没有需要生成的房屋（所选范围内都已生成过这个账期的账单）")
+        raise UserError("没有需要生成的账单（所选范围内该账期已被已有账单覆盖；指定户模式下请至少勾选一户）")
     fee_item = preview["fee_item"]
     linked = 0
     for line in preview["lines"]:
         # v2.6.0：可按户选择关联车辆（停车费类账单），校验车辆确实属于该房屋
         vehicle_id = None
-        raw_vid = safe_int(form.get("vehicle_for_%d" % line["house"]["id"]))
-        if raw_vid:
-            vrow = query_one(db, "SELECT house_id, plate FROM vehicle WHERE id=?", (raw_vid,))
-            if not vrow or vrow["house_id"] != line["house"]["id"]:
-                raise UserError("勾选的关联车辆与房屋不匹配（车牌 %s），请刷新页面后重试"
-                                % (vrow["plate"] if vrow else "#%d" % raw_vid))
-            vehicle_id = raw_vid
-            linked += 1
+        if line.get("first_for_house"):
+            raw_vid = safe_int(form.get("vehicle_for_%d" % line["house"]["id"]))
+            if raw_vid:
+                vrow = query_one(db, "SELECT house_id, plate FROM vehicle WHERE id=?", (raw_vid,))
+                if not vrow or vrow["house_id"] != line["house"]["id"]:
+                    raise UserError("勾选的关联车辆与房屋不匹配（车牌 %s），请刷新页面后重试"
+                                    % (vrow["plate"] if vrow else "#%d" % raw_vid))
+                vehicle_id = raw_vid
+                linked += 1
         cur = db.execute(
             """INSERT INTO bill (house_id, fee_item_id, period, period_start, months, amount_receivable, vehicle_id)
                VALUES (?,?,?,?,?,?,?)""",
-            (line["house"]["id"], fee_item["id"], preview["period"], preview["period_start"],
-             preview["months"], line["amount_fen"], vehicle_id))
+            (line["house"]["id"], line["item"]["id"], line["period"], line["period_start"],
+             line["months"], line["amount_fen"], vehicle_id))
         # 生成即按公式定状态：单价为 0（免收）时直接是已缴清，不产生"欠费 0 元"的杂音
         _refresh_bill_status(db, cur.lastrowid)
     log_op(db, "收费", "生成账单",
-           "「%s」账期 %s：生成 %d 笔账单，应收合计 %s 元%s"
+           "「%s」账期 %s：生成 %d 笔账单，应收合计 %s 元%s%s%s"
            % (fee_item["name"], preview["period"], preview["count"], fmt_money(preview["total_fen"]),
-              "，其中 %d 笔关联车辆" % linked if linked else ""), is_demo)
-    return preview["count"], preview["total_fen"], 0
+              "，自动补齐缺口 %d 笔" % preview["adjusted"] if preview["adjusted"] else "",
+              "，从计费开始月起补 %d 笔" % preview["backfilled"] if preview["backfilled"] else "",
+              "；另有 %d 户该期间已被已有账单覆盖跳过" % preview["covered_skipped"]
+              if preview["covered_skipped"] else ""), is_demo)
+    return preview["count"], preview["total_fen"], preview["covered_skipped"]
 
 
 # ---------------------------------------------------------------- 账单查询
