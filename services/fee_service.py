@@ -174,56 +174,42 @@ def generate_preview(db, community_id, fee_item_id, period_value, building_id=0,
     for h in houses:
         info = cmap.get(h["id"])
         covered = info["covered"] if info else set()
-        # v2.8.0：账期只决定截止月——所有房屋的核对区间一律从小区"计费开始月份"（未设则为所选账期首月）
-        # 到所选账期末，已有账单覆盖不了的缺口（含历史缺口）全部自动补齐
-        span_s = s_key
-        backfill = False
-        if b_key is not None:
-            if b_key > e_key:
-                covered_skipped += 1
-                continue
+        # v2.8.1：起点规则——
+        #   从未开单的房屋：从小区"计费开始月份"（未设则为所选账期首月）起；
+        #   有缴费记录的房屋：从最后一笔覆盖月份的次月起（中间断档不往回补，已缴到账期之后的跳过）。
+        if covered:
+            span_s = max(max(covered) + 1, b_key if b_key is not None else 0)
+        elif b_key is not None:
             span_s = b_key
-            backfill = b_key < s_key
-        span_months = list(range(span_s, e_key + 1))
-        if len(covered.intersection(span_months)) >= len(span_months):
-            covered_skipped += 1
+        else:
+            span_s = s_key
+        if span_s > e_key:
+            covered_skipped += 1        # 已缴/预缴到账期之后，无需生成
             continue
+        backfill = span_s != s_key
+        r_months = e_key - span_s + 1
+        y1, m1 = divmod(span_s, 12)
+        y2, m2 = divmod(e_key, 12)
+        full = (span_s == s_key)
+        line_period = period if full else "%d.%d-%d.%d" % (y1, m1 + 1, y2, m2 + 1)
+        line_ps = "%04d-%02d" % (y1, m1 + 1)
         # v2.7.1：本户适用档位——house.fee_item_id 指向同名项目时按本户档位计价
         eff_item, eff_tier = fee_item, False
         if h.get("fee_item_id") and h["fee_item_id"] != fee_item["id"]:
             it = tier_map.get(h["fee_item_id"])
             if it and it["name"] == fee_item["name"] and it["community_id"] == community_id:
                 eff_item, eff_tier = it, True
-        runs, run = [], []
-        for m in span_months:
-            if m in covered:
-                if run:
-                    runs.append(run)
-                    run = []
-            else:
-                run.append(m)
-        if run:
-            runs.append(run)
-        first = True
-        for run in runs:
-            r_months = len(run)
-            y1, m1 = divmod(run[0], 12)
-            y2, m2 = divmod(run[-1], 12)
-            full = (r_months == months and run[0] == s_key)
-            line_period = period if full else "%d.%d-%d.%d" % (y1, m1 + 1, y2, m2 + 1)
-            line_ps = "%04d-%02d" % (y1, m1 + 1)
-            amt = compute_bill_amount(eff_item, h, r_months)
-            total += amt
-            lines.append({"house": h, "amount_fen": amt, "period": line_period,
-                          "period_start": line_ps, "months": r_months,
-                          "adjusted": not full, "backfill": backfill and not full,
-                          "first_for_house": first, "item": eff_item,
-                          "tier": bool(eff_tier)})
-            if not full:
-                adjusted += 1
-                if backfill:
-                    backfilled += 1
-            first = False
+        amt = compute_bill_amount(eff_item, h, r_months)
+        total += amt
+        lines.append({"house": h, "amount_fen": amt, "period": line_period,
+                      "period_start": line_ps, "months": r_months,
+                      "adjusted": not full, "backfill": backfill,
+                      "first_for_house": True, "item": eff_item,
+                      "tier": bool(eff_tier)})
+        if not full:
+            adjusted += 1
+            if backfill:
+                backfilled += 1
     # v2.6.0：给每户带上名下车辆（预览页可为停车费类账单选择关联车牌）
     if lines:
         hid_list = []
