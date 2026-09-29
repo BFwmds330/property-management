@@ -31,7 +31,6 @@
         <label class="form-label small">计费周期</label>
         <select class="form-select form-select-sm" name="cycle">
           <option value="month">按月</option>
-          <option value="quarter">按季</option>
           <option value="year">按年</option>
         </select>
       </div>
@@ -105,7 +104,7 @@
             <div class="col-md-6"><label class="form-label">计费周期</label>
               <select class="form-select" name="cycle">
                 <option value="month" {{ 'selected' if f.cycle == 'month' }}>按月</option>
-                <option value="quarter" {{ 'selected' if f.cycle == 'quarter' }}>按季</option>
+                {% if f.cycle == 'quarter' %}<option value="quarter" selected>按季（旧）</option>{% endif %}
                 <option value="year" {{ 'selected' if f.cycle == 'year' }}>按年</option>
               </select></div>
             <div class="col-12"><label class="form-label">备注</label>
