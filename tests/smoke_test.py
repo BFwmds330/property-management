@@ -1039,8 +1039,8 @@ def main():
                                                "building_id": "selected", "status_scope": "all",
                                                "house_ids": h_sel}, follow_redirects=True)
     check("只为勾选的 2 户生成账单", "共 2 笔".encode() in r.data)
-    n_p = db_rows("SELECT COUNT(*) AS n FROM bill WHERE period='2027-01'")[0]["n"]
-    check("其他户没有该账期账单", n_p == 2, str(n_p))
+    n_p = db_rows("SELECT COUNT(*) AS n FROM bill WHERE period='2026.10-2027.1'")[0]["n"]
+    check("两户从末笔覆盖月次月起补齐（2026.10-2027.1，共 2 笔）", n_p == 2, str(n_p))
     r = c2.post("/fee/generate", data={"fee_item_id": str(f1), "period": "2027-02",
                                        "building_id": "selected", "status_scope": "all",
                                        "house_ids": []}, follow_redirects=True)
@@ -1060,7 +1060,7 @@ def main():
                                                "building_id": "selected", "status_scope": "all",
                                                "house_ids": h_sel[:1]}, follow_redirects=True)
     bid_same = db_rows("SELECT id FROM bill WHERE fee_item_id=? AND period='2027-02'", (f1b,))[0]["id"]
-    r = c2.post("/fee/bill/%d/edit-period" % bid_same, data={"new_period": "2027-01"},
+    r = c2.post("/fee/bill/%d/edit-period" % bid_same, data={"new_period": "2026.10-2027.1"},
                 follow_redirects=True)
     check("改账期撞到同名同期账单被拦截", "同名".encode() in r.data)
 
@@ -1102,9 +1102,11 @@ def main():
                                                "vehicle_for_%s" % hid_imp: str(veh_a["id"])},
                 follow_redirects=True)
     check("停车费账单生成成功", "共 1 笔".encode() in r.data)
-    vid_set = db_rows("SELECT vehicle_id FROM bill WHERE fee_item_id=? AND period='2027-03'",
-                      (fid_park,))[0]["vehicle_id"]
-    check("账单已关联所选车辆", vid_set == veh_a["id"], str(vid_set))
+    vid_set = db_rows("SELECT vehicle_id, months FROM bill WHERE fee_item_id=? AND period='2027.1-2027.3'",
+                      (fid_park,))[0]
+    check("账单已关联所选车辆（2027.1-2027.3，从末笔缴至月次月起 3 个月）",
+          vid_set["vehicle_id"] == veh_a["id"] and vid_set["months"] == 3,
+          str(dict(vid_set)))
     r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_park), "period": "2027-04",
                                                "building_id": "selected", "status_scope": "all",
                                                "house_ids": [str(hid_imp)]}, follow_redirects=True)
@@ -1217,19 +1219,17 @@ def main():
     r = c2.post("/fee/generate/confirm", data={"fee_item_id": str(fid_y), "period": "2026",
                                                "building_id": "", "status_scope": "all"},
                 follow_redirects=True)
-    check("计费开始月起到账期末：全量生成（25 户补 2025.7-12 + 新户 18 个月）",
-          "共 %d 笔" % (len(hs_all) + 1) in r.data.decode("utf-8"))
+    check("从未开单的新户从计费开始月起补（仅生成 1 笔）",
+          "共 1 笔" in r.data.decode("utf-8"))
     seg = db_rows("SELECT period, months, amount_receivable FROM bill WHERE fee_item_id=? AND house_id=?",
                   (fid_y, hid_new))
     check("新户补齐账期 2025.7-2026.12（18 个月 1800 元）",
           seg and seg[0]["period"] == "2025.7-2026.12" and seg[0]["months"] == 18
           and seg[0]["amount_receivable"] == 180000,
           str([dict(x) for x in seg]))
-    seg_old = db_rows("SELECT period, months, amount_receivable FROM bill WHERE fee_item_id=? AND house_id=? AND period='2025.7-2025.12'",
-                      (fid_y, int(hs_all[0])))
-    check("老房屋也自动补历史缺口（2025.7-2025.12，6 个月 600 元）",
-          seg_old and seg_old[0]["months"] == 6 and seg_old[0]["amount_receivable"] == 60000,
-          str([dict(x) for x in seg_old]))
+    n_skip = db_rows("SELECT COUNT(*) AS n FROM bill WHERE fee_item_id=? AND house_id=? AND period LIKE '2025.7%'",
+                     (fid_y, int(hs_all[0])))[0]["n"]
+    check("已预缴到账期之后的房屋自动跳过（不再生成 2025.7 起的账单）", n_skip == 0, str(n_skip))
 
     # ============ 25. v2.7.1：本户物业费档位 ============
     print("== 本户物业费档位 ==")
