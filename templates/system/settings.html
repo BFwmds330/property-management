@@ -14,7 +14,7 @@
         <p class="small text-secondary">
           您的住户和缴费记录都是长期积累的重要资产。建议：<b>每周备份一次</b>，
           把下载的 .db 文件保存到 U 盘或网盘。系统每天首次启动时也会自动备份一份到
-          <code>data/backups/</code>（保留最近 {{ backups | length if backups else 0 }} 份以内）。
+          <code>data/backups/</code>（自动备份保留最近 14 份；手动备份不受限）。
         </p>
         <a class="btn btn-warning fw-bold" href="{{ url_for('system.backup') }}">⬇ 立即备份数据（下载 .db 文件）</a>
         {% if backups %}

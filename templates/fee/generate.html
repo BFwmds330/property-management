@@ -20,7 +20,7 @@
         <label class="form-label">收费项目 <span class="req">＊</span></label>
         <select class="form-select" name="fee_item_id" id="feeItem" required>
           {% for f in items %}
-          <option value="{{ f.id }}" data-cycle="{{ f.cycle }}" {{ sel('fee_item_id', f.id, form.fee_item_id if form else '') }}>{{ f.name }}</option>
+          <option value="{{ f.id }}" data-cycle="{{ f.cycle }}" {{ sel('fee_item_id', f.id, form.fee_item_id if form else '') }}>{{ f.name }}（{{ f.unit_price | money }} 元{% if f.pricing_mode == 'area' %}/㎡{% else %}/户{% endif %}/月）</option>
           {% endfor %}
         </select>
       </div>
@@ -80,7 +80,7 @@
       </div>
       <div class="col-12">
         <button class="btn btn-success px-4">预览要生成的账单</button>
-        <div class="form-text-hint mt-1">账期填的是“截止月”：系统会从本小区“计费开始月份”（总览页可设置）起逐户核对已有账单，已覆盖的期间自动跳过，所有缺口（含历史缺口）自动补齐到所选账期末——例如计费开始月为 23.12、已缴到 26.6，填 2026-11 则只生成 26.7-26.11。</div>
+        <div class="form-text-hint mt-1">账期填的是“截止月”：系统会从本小区“计费开始月份”（总览页可设置）起逐户核对已有账单——从未开过单的房屋从该月起补；有缴费记录的房屋从最后一笔缴至月的次月起补（中间断档不往回补）；已缴到所选账期之后的自动跳过。例如已缴到 26.6，填 2026-11 则只生成 26.7-26.11。</div>
       </div>
     </form>
   </div>
@@ -107,7 +107,7 @@
           {% for line in preview.lines %}
           <tr>
             <td>{{ line.house.building_code | replace('#','') }}栋{{ line.house.unit }}单元{{ line.house.room_no }}室</td>
-            <td class="small">{{ line.period }}{% if line.backfill %} <span class="badge text-bg-warning">接管起补</span>{% elif line.adjusted %} <span class="badge text-bg-info">补齐</span>{% endif %}</td>
+            <td class="small">{{ line.period }}{% if line.backfill %} <span class="badge text-bg-warning">起补（自 {{ line.period_start }}）</span>{% elif line.adjusted %} <span class="badge text-bg-info">补齐</span>{% endif %}</td>
             <td>{{ line.house.owner_name or '—' }}</td>
             <td class="small">{{ line.item.unit_price | money }}{% if line.item.pricing_mode == 'area' %}/㎡{% else %}/户{% endif %}{% if line.tier %} <span class="badge text-bg-warning">本户档位</span>{% endif %}</td>
             <td>{{ line.house.area_100 | area }}</td>

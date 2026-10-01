@@ -45,7 +45,7 @@
 </div></div>
 
 <div class="card app-card">
-  <form method="get" action="{{ url_for('fee.receipt') }}" target="_blank">
+  <form method="get" action="{{ url_for('fee.receipt') }}" target="_blank" data-single-submit>
   <div class="card-header d-flex justify-content-between flex-wrap align-items-center">
     <span>共 {{ total_count }} 笔流水{% if pages > 1 %} · 第 {{ page }} / {{ pages }} 页{% endif %}</span>
     <span class="d-flex align-items-center gap-3">

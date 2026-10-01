@@ -235,7 +235,10 @@ def generate_preview(db, community_id, fee_item_id, period_value, building_id=0,
 
 def _scope_houses(db, community_id, fee_item, period, building_id=0, status_scope="all",
                   house_ids=None):
-    sql = """SELECT h.*, b.code AS building_code FROM house h JOIN building b ON b.id=h.building_id
+    sql = """SELECT h.*, b.code AS building_code, r.name AS owner_name
+             FROM house h
+             JOIN building b ON b.id=h.building_id
+             LEFT JOIN resident r ON r.id = h.owner_resident_id
              WHERE h.community_id=?"""
     args = [community_id]
     bid = safe_int(building_id)          # ""/"0"/"selected" 都归一为 0（不过滤楼栋）
@@ -296,7 +299,7 @@ def generate_bills(db, community_id, form, is_demo=0):
            "「%s」账期 %s：生成 %d 笔账单，应收合计 %s 元%s%s%s"
            % (fee_item["name"], preview["period"], preview["count"], fmt_money(preview["total_fen"]),
               "，自动补齐缺口 %d 笔" % preview["adjusted"] if preview["adjusted"] else "",
-              "，从计费开始月起补 %d 笔" % preview["backfilled"] if preview["backfilled"] else "",
+              "，自动起补 %d 笔（自上次缴至月次月或计费开始月）" % preview["backfilled"] if preview["backfilled"] else "",
               "；另有 %d 户该期间已被已有账单覆盖跳过" % preview["covered_skipped"]
               if preview["covered_skipped"] else ""), is_demo)
     return preview["count"], preview["total_fen"], preview["covered_skipped"]
@@ -637,14 +640,13 @@ def pay_all_for_house(db, house_id, form):
 
 # ---------------------------------------------------------------- 欠费 / 催缴
 
-def overdue_rows(db, community_id, building_id=0, keyword=""):
-    """欠费清单：每行 = 一笔未缴清的账单。"""
+def count_overdue(db, community_id, building_id=0, keyword=""):
+    where, args = _overdue_where(community_id, building_id, keyword)
+    return scalar(db, "SELECT COUNT(*)" + where, args)
+
+
+def _overdue_where(community_id, building_id=0, keyword=""):
     sql = """
-        SELECT b.id AS bill_id, b.period, b.period_start, f.name AS item_name,
-               h.id AS house_id, h.unit, h.room_no, bd.code AS building_code,
-               r.name AS owner_name, r.phone AS owner_phone,
-               b.amount_receivable, b.amount_received,
-               (b.amount_receivable - b.amount_received) AS owed_fen
         FROM bill b
         JOIN fee_item f ON f.id = b.fee_item_id
         JOIN house h ON h.id = b.house_id
@@ -655,12 +657,28 @@ def overdue_rows(db, community_id, building_id=0, keyword=""):
     if building_id:
         sql += " AND h.building_id = ?"
         args.append(building_id)
-    kw = keyword.strip()
+    kw = (keyword or "").strip()
     if kw:
         sql += " AND (r.name LIKE ? OR (bd.code || '-' || h.unit || '-' || h.room_no) LIKE ?)"
         like = f"%{kw}%"
         args += [like, like]
+    return sql, args
+
+
+def overdue_rows(db, community_id, building_id=0, keyword="", page=0, page_size=200):
+    """欠费清单：每行 = 一笔未缴清的账单。page>0 时按页返回；page=0 返回全部（CSV 导出用）。"""
+    where, args = _overdue_where(community_id, building_id, keyword)
+    sql = """
+        SELECT b.id AS bill_id, b.period, b.period_start, f.name AS item_name,
+               h.id AS house_id, h.unit, h.room_no, bd.code AS building_code,
+               r.name AS owner_name, r.phone AS owner_phone,
+               b.amount_receivable, b.amount_received,
+               (b.amount_receivable - b.amount_received) AS owed_fen
+        """ + where
     sql += " ORDER BY bd.id, h.unit, h.floor, h.room_no, b.period_start"
+    if page:
+        sql += " LIMIT ? OFFSET ?"
+        args = list(args) + [page_size, (page - 1) * page_size]
     rows = [dict(r) for r in query_all(db, sql, args)]
     for r in rows:
         r["house_label"] = house_label(r["building_code"], r["unit"], r["room_no"])

@@ -24,7 +24,8 @@
       </div>
       <div class="col-6 col-md-2">
         <label class="form-label small">单价（元/月）</label>
-        <input class="form-control form-control-sm" type="number" step="0.01" min="0.01" name="unit_price" required placeholder="2.20">
+        <input class="form-control form-control-sm" type="number" step="0.01" min="0" name="unit_price" required placeholder="2.20">
+        <div class="form-text-hint">填 0 = 免收档（账单恒 0 元且生成即已缴清）</div>
         <div class="form-text-hint">按面积=元/㎡/月；按户=元/户/月</div>
       </div>
       <div class="col-6 col-md-2">
@@ -100,7 +101,7 @@
                 <option value="fixed" {{ 'selected' if f.pricing_mode == 'fixed' }}>按户固定金额</option>
               </select></div>
             <div class="col-md-6"><label class="form-label">单价（元/月）</label>
-              <input class="form-control" type="number" step="0.01" min="0.01" name="unit_price" value="{{ f.unit_price / 100 }}" required></div>
+              <input class="form-control" type="number" step="0.01" min="0" name="unit_price" value="{{ f.unit_price / 100 }}" required></div>
             <div class="col-md-6"><label class="form-label">计费周期</label>
               <select class="form-select" name="cycle">
                 <option value="month" {{ 'selected' if f.cycle == 'month' }}>按月</option>

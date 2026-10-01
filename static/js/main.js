@@ -29,6 +29,15 @@
     });
   }
 
+  // 带 data-single-submit 的表单：提交后立即禁用提交按钮，防双击重复打开
+  document.addEventListener("submit", function (e) {
+    var f = e.target;
+    if (f && f.matches && f.matches("[data-single-submit]")) {
+      var b = f.querySelector("button");
+      if (b) { setTimeout(function () { b.disabled = true; }, 0); }
+    }
+  }, true);
+
   // 带 data-confirm 的表单 / 链接
   document.addEventListener("submit", function (e) {
     var form = e.target;

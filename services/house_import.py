@@ -155,11 +155,9 @@ def _get_or_create_building(db, community_id, code, units, floors, created):
     row = query_one(db, "SELECT * FROM building WHERE community_id=? AND code=?",
                     (community_id, code))
     if row:
-        # 已有楼栋范围不够时自动扩到能容纳导入的房屋
-        if row["units"] < units or row["floors"] < floors:
-            db.execute("UPDATE building SET units=?, floors=? WHERE id=?",
-                       (max(row["units"], units), max(row["floors"], floors), row["id"]))
-            created["buildings_updated"] += 1
+        # v2.9.0：已有楼栋不再按“房号估算层数”静默改写（曾把 6 层楼改成 99 层）。
+        # 房号超出楼栋登记层数的行照常导入（house 不校验层数），只是楼栋档案保持真实。
+        created["buildings_kept"] = created.get("buildings_kept", 0) + 1
         return row["id"]
     cur = db.execute(
         "INSERT INTO building (community_id, code, units, floors, has_elevator, remark) "

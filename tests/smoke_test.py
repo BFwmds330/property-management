@@ -1039,8 +1039,10 @@ def main():
                                                "building_id": "selected", "status_scope": "all",
                                                "house_ids": h_sel}, follow_redirects=True)
     check("只为勾选的 2 户生成账单", "共 2 笔".encode() in r.data)
-    n_p = db_rows("SELECT COUNT(*) AS n FROM bill WHERE period='2026.10-2027.1'")[0]["n"]
-    check("两户从末笔覆盖月次月起补齐（2026.10-2027.1，共 2 笔）", n_p == 2, str(n_p))
+    nxt = __import__("sys").modules["utils"].month_add(CUR_MONTH, 1)   # 末笔覆盖月次月
+    n_p = db_rows("SELECT COUNT(*) AS n FROM bill WHERE house_id IN (%s) AND period_start=? AND months=?"
+                  % ",".join(h_sel), (nxt, 3))[0]["n"]
+    check("两户从末笔覆盖月次月起补齐（3 个月缺口段，共 2 笔）", n_p == 2, str(n_p))
     r = c2.post("/fee/generate", data={"fee_item_id": str(f1), "period": "2027-02",
                                        "building_id": "selected", "status_scope": "all",
                                        "house_ids": []}, follow_redirects=True)
@@ -1060,7 +1062,9 @@ def main():
                                                "building_id": "selected", "status_scope": "all",
                                                "house_ids": h_sel[:1]}, follow_redirects=True)
     bid_same = db_rows("SELECT id FROM bill WHERE fee_item_id=? AND period='2027-02'", (f1b,))[0]["id"]
-    r = c2.post("/fee/bill/%d/edit-period" % bid_same, data={"new_period": "2026.10-2027.1"},
+    dup_target = db_rows("SELECT period FROM bill WHERE house_id=? AND fee_item_id=? AND period!='2027-02' LIMIT 1",
+                         (db_rows("SELECT house_id FROM bill WHERE id=?", (bid_same,))[0]["house_id"], f1))[0]["period"]
+    r = c2.post("/fee/bill/%d/edit-period" % bid_same, data={"new_period": dup_target},
                 follow_redirects=True)
     check("改账期撞到同名同期账单被拦截", "同名".encode() in r.data)
 
