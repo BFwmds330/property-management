@@ -1235,6 +1235,27 @@ def main():
                      (fid_y, int(hs_all[0])))[0]["n"]
     check("已预缴到账期之后的房屋自动跳过（不再生成 2025.7 起的账单）", n_skip == 0, str(n_skip))
 
+    # ============ 26. v2.9.0：体验审查修复回归 ============
+    print("== 零元免收档 UI 创建 / 多联收据 / 预览业主列 ==")
+    c2.post("/fee/items/add", data={"name": "免收测试2", "pricing_mode": "fixed",
+                                    "unit_price": "0", "cycle": "month"}, follow_redirects=True)
+    f_free = db_rows("SELECT id FROM fee_item WHERE name='免收测试2'")
+    check("UI 可创建 0 元免收档项目", bool(f_free))
+    # 预览业主列（F-4）：给 102 室登记业主后预览应显示业主名
+    from utils import month_add as _ma
+    nxt = _ma(CUR_MONTH, 1)
+    r = c2.post("/resident/add", data={"house_id": str(hid_new), "role": "owner", "name": "档位业主",
+                                        "relation": ""}, follow_redirects=True)
+    r = c2.post("/fee/generate", data={"fee_item_id": str(f1), "period": nxt,
+                                        "building_id": "selected", "status_scope": "all",
+                                        "house_ids": [str(hid_new)]})
+    check("生成预览显示业主列", "档位业主".encode() in r.data)
+    # 多联收据（F-2）：ids 重复参数提交应渲染两联
+    pid_a = db_rows("SELECT id FROM payment ORDER BY id DESC LIMIT 1")[0]["id"]
+    pid_b = db_rows("SELECT id FROM payment ORDER BY id DESC LIMIT 1 OFFSET 1")[0]["id"]
+    r = c2.get("/fee/receipt?ids=%d&ids=%d" % (pid_a, pid_b))
+    check("收据多选渲染两联", r.status_code == 200 and "第 2 联".encode() in r.data)
+
     # ============ 25. v2.7.1：本户物业费档位 ============
     print("== 本户物业费档位 ==")
     r = c2.post("/house/%d/edit" % hid_new, data={"building_id": "1", "unit": "1", "floor": "5",
