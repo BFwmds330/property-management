@@ -112,7 +112,7 @@ def generate_confirm(db):
     db.commit()
     from utils import fmt_money
     flash("账单生成完成：共 %d 笔，应收合计 %s 元" % (count, fmt_money(total_fen)), "success")
-    return redirect(url_for("fee.bill_list", period=request.form.get("period", "")))
+    return redirect(url_for("fee.bill_list"))
 
 
 # ---------------------------------------------------------------- 账单
@@ -279,11 +279,15 @@ def overdue(db):
     if not cur:
         return need_community()
     args = request.args
-    rows = fee_service.overdue_rows(
-        db, cur["id"], building_id=safe_int(args.get("building_id")),
-        keyword=args.get("keyword", ""))
+    filters = dict(building_id=safe_int(args.get("building_id")),
+                   keyword=args.get("keyword", ""))
+    total_n = fee_service.count_overdue(db, cur["id"], **filters)
+    page, pages, page_list, page_url = build_pagination(
+        args, safe_int(args.get("page"), 1), total_n, 200)
+    rows = fee_service.overdue_rows(db, cur["id"], page=page, **filters)
     total = sum(r["owed_fen"] for r in rows)
-    return render_template("fee/overdue.html", rows=rows, total=total,
+    return render_template("fee/overdue.html", rows=rows, total=total, total_n=total_n,
+                           page=page, pages=pages, page_list=page_list, page_url=page_url,
                            buildings=house_service.list_buildings(db, cur["id"]),
                            f_building=args.get("building_id", ""),
                            f_keyword=args.get("keyword", ""), active_nav="fee")
@@ -373,10 +377,11 @@ def receipt(db):
     from database import query_all
     from utils import money_capital
     ids = []
-    for part in (request.args.get("ids") or "").split(","):
-        pid = safe_int(part)
-        if pid > 0:
-            ids.append(pid)
+    for part in request.args.getlist("ids"):          # 兼容 ?ids=3&ids=2 与 ?ids=3,2 两种提交
+        for piece in str(part).split(","):
+            pid = safe_int(piece)
+            if pid > 0:
+                ids.append(pid)
     if not ids:
         raise UserError("请先选择要打印的缴费记录")
     ids = ids[:50]     # 一次最多 50 联，防止误传超大列表

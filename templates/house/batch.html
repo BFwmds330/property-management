@@ -24,7 +24,8 @@
               <select class="form-select" name="building_id" required>
                 <option value="">请选择楼栋</option>
                 {% for b in buildings %}
-                <option value="{{ b.id }}" {{ sel('building_id', b.id) }}>{{ b.code }}（{{ b.units }} 单元 / {{ b.floors }} 层）</option>
+                <option value="{{ b.id }}" data-units="{{ b.units }}" data-floors="{{ b.floors }}"
+                        {{ sel('building_id', b.id) }}>{{ b.code }}（{{ b.units }} 单元 / {{ b.floors }} 层）</option>
                 {% endfor %}
               </select>
               {% if not buildings %}<div class="form-text-hint">还没有楼栋：<a href="{{ url_for('building.building_list') }}">点这里去新增楼栋</a>，建好后回来刷新本页</div>{% endif %}
@@ -77,4 +78,23 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var sel = document.getElementById("buildingSelect");
+  if (!sel) sel = document.querySelector('select[name="building_id"]');
+  var units = document.querySelector('input[name="units"]');
+  var floors = document.querySelector('input[name="floors"]');
+  function fill() {
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.getAttribute("data-units")) return;
+    units.value = opt.getAttribute("data-units");
+    floors.value = opt.getAttribute("data-floors");
+  }
+  sel.addEventListener("change", fill);
+  fill();
+})();
+</script>
 {% endblock %}

@@ -154,7 +154,7 @@
             <div class="col-md-6">
               <label class="form-label">调整后应收（元）<span class="req">＊</span></label>
               <input class="form-control" type="number" step="0.01" min="0" name="new_amount" required
-                     value="{{ bill.amount_receivable | money }}">
+                     value="{{ '%.2f' | format(bill.amount_receivable / 100) }}">
             </div>
             <div class="col-md-6">
               <label class="form-label">调整原因 <span class="req">＊</span></label>
