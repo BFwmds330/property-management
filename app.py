@@ -143,8 +143,9 @@ def create_app():
     from routes.expense import expense_bp
     from routes.notice import notice_bp
     from routes.system import system_bp
+    from routes.sync import sync_bp
     for bp in (main_bp, community_bp, house_bp, building_bp, htype_bp,
-               resident_bp, fee_bp, report_bp, repair_bp, staff_bp, expense_bp, notice_bp, system_bp):
+               resident_bp, fee_bp, report_bp, repair_bp, staff_bp, expense_bp, notice_bp, system_bp, sync_bp):
         app.register_blueprint(bp)
 
     # ------------------------------------------------ 模板辅助函数 / 过滤器
@@ -207,7 +208,10 @@ def create_app():
             return None
         if session.get("pin_ok"):
             return None
-        if request.path == "/pin" or request.path.startswith("/static/"):
+        # /sync/* 是局域网同步 API：自带 X-Wuye-Pin 头校验（与启动密码同强度），
+        # 不走浏览器会话，因此在这里豁免（见 routes/sync.py）
+        if (request.path == "/pin" or request.path.startswith("/static/")
+                or request.path.startswith("/sync/")):
             return None
         nxt = request.full_path if request.query_string else request.path
         return redirect(url_for("pin_page", next=nxt))

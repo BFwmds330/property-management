@@ -1286,6 +1286,55 @@ def main():
                 follow_redirects=False)
     check("非法档位被拦截", r.status_code == 302)
 
+    # ================================================== 15. 局域网同步 API（v2.9.1）
+    print("\n===== 15. 局域网同步 API =====")
+    r = c.get("/sync/info")
+    info_before = r.get_json()
+    check("sync/info 未设密码时放行并返回摘要",
+          r.status_code == 200 and info_before.get("ok") is True
+          and info_before.get("bills") is not None)
+
+    r = c.get("/sync/pull")
+    check("sync/pull 返回 SQLite 快照",
+          r.status_code == 200 and r.data[:15] == b"SQLite format 3")
+    pulled = r.data
+
+    tmp_push = os.path.join(tempfile.gettempdir(), "wuye_smoke_push.db")
+    with open(tmp_push, "wb") as f:
+        f.write(pulled)
+    con = sqlite3.connect(tmp_push)
+    con.execute("INSERT INTO community (name) VALUES ('同步测试小区')")
+    con.commit()
+    con.close()
+    backups_before = len([f for f in os.listdir(config.BACKUP_DIR) if f.endswith(".db")])
+    with open(tmp_push, "rb") as f:
+        body = f.read()
+    r = c.post("/sync/push", data=body, content_type="application/octet-stream")
+    check("sync/push 接收合法库", r.status_code == 200 and r.get_json().get("ok") is True)
+    r = c.get("/sync/info")
+    check("推送后小区数 +1", r.get_json().get("communities") == info_before.get("communities") + 1,
+          "before=%s after=%s" % (info_before.get("communities"), r.get_json().get("communities")))
+    backups_after = len([f for f in os.listdir(config.BACKUP_DIR) if f.endswith(".db")])
+    check("推送前旧数据自动备份", backups_after == backups_before + 1)
+
+    r = c.post("/sync/push", data=b"not a database", content_type="application/octet-stream")
+    check("推送非法内容被 400 拒绝", r.status_code == 400)
+
+    # ---- 启动密码下的头部鉴权 ----
+    c.post("/settings/pin/enable", data={"pin": "8848", "pin2": "8848"})
+    r = c.get("/sync/info")
+    check("设密码后无头被 401 拒绝", r.status_code == 401)
+    r = c.get("/sync/info", headers={"X-Wuye-Pin": "0000"})
+    check("密码错误被 401 拒绝", r.status_code == 401)
+    r = c.get("/sync/info", headers={"X-Wuye-Pin": "8848"})
+    check("密码正确放行", r.status_code == 200)
+    r = c.post("/sync/push", data=body, headers={"X-Wuye-Pin": "8848"},
+               content_type="application/octet-stream")
+    check("推送同样要求头部", r.status_code == 200)
+    c.post("/settings/pin/disable", data={"old_pin": "8848"})
+    r = c.get("/sync/info")
+    check("关密码后恢复放行", r.status_code == 200)
+
     print("\n" + "=" * 50)
     print("通过 %d 项检查，失败 %d 项" % (PASS, len(FAIL)))
     for name, detail in FAIL:

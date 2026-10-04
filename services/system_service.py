@@ -192,6 +192,22 @@ def restore_from_file(upload_path):
     return name
 
 
+def snapshot_db(dest_path):
+    """一致性快照：用 sqlite backup API 把当前库导出到 dest_path（v2.9.1，局域网同步用）。
+
+    与 shutil.copy2 的区别：数据库正在写入时也能取到一致视图，不会拷出半截文件。
+    """
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(dest_path)
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+    return dest_path
+
+
 # ---------------------------------------------------------------- 演示数据
 
 def demo_communities(db):
