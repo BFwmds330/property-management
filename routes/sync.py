@@ -10,10 +10,11 @@
 - 所有端点返回 JSON（错误用 401/400 状态码，不走页面的 flash+redirect）；
 - 每次同步动作都写操作日志，可审计。
 """
+import io
 import os
 from datetime import datetime
 
-from flask import Blueprint, after_this_request, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file
 
 from config import DB_PATH, VERSION
 from database import get_db, log_op, query_one
@@ -63,25 +64,33 @@ def sync_info():
 
 @sync_bp.route("/sync/pull")
 def sync_pull():
-    """安卓版拉取 PC 数据的一致性快照。"""
+    """安卓版拉取 PC 数据的一致性快照。
+
+    v2.9.2：改为读入内存后用 BytesIO 响应——此前 send_file 直接引用临时文件，
+    Windows 下响应结束后句柄可能未释放，导致 .sync_pull_tmp 残留在 data/ 目录。
+    """
     if not _pin_ok():
         return jsonify(ok=False, error="需要启动密码（请在安卓版同步设置中填写）"), 401
     tmp = DB_PATH + ".sync_pull_tmp"
+    try:
+        if os.path.exists(tmp):
+            os.remove(tmp)          # 清理历史版本可能残留的临时文件
+    except OSError:
+        pass
     system_service.snapshot_db(tmp)
-    name = "wuye_pc_%s.db" % datetime.now().strftime("%Y%m%d_%H%M%S")
-    db = get_db()
-    log_op(db, "系统", "同步拉取", "安卓版拉取了 PC 数据快照（%s）" % name)
-    db.commit()
-
-    @after_this_request
-    def _cleanup(_resp):
+    try:
+        with open(tmp, "rb") as f:
+            payload = f.read()
+    finally:
         try:
             os.remove(tmp)
         except OSError:
             pass
-        return _resp
-
-    return send_file(tmp, as_attachment=True, download_name=name,
+    name = "wuye_pc_%s.db" % datetime.now().strftime("%Y%m%d_%H%M%S")
+    db = get_db()
+    log_op(db, "系统", "同步拉取", "安卓版拉取了 PC 数据快照（%s）" % name)
+    db.commit()
+    return send_file(io.BytesIO(payload), as_attachment=True, download_name=name,
                      mimetype="application/octet-stream")
 
 
